@@ -14,7 +14,7 @@ class Lexer {
         std::string line_comment = "~";
         std::string block_comment = "===";
 
-        std::list<string> literals; //{"+", "-", "*", "/"};
+        std::list<std::string> literals; //{"+", "-", "*", "/"};
 
         enum Token {
             TOKEN_NUMBER = -1, //"NUMBER"
@@ -27,19 +27,19 @@ class Lexer {
         };
 
     public:
-        void setIgnore (_ignore) {
+        void setIgnore (std::string _ignore) {
             ignore = _ignore;
         }
 
-        void setLineComment (_line_comment) {
+        void setLineComment (std::string _line_comment) {
             line_comment = _line_comment;
         }
 
-        void setBlockComment (_block_comment) {
+        void setBlockComment (std::string _block_comment) {
             block_comment = _block_comment;
         }
 
-        void setLiterals (std::list<string> _literals) {
+        void setLiterals (std::list<std::string> _literals) {
             for (std::string literal : _literals) {
                 if (literal.size() != 1) {
                     throw std::invalid_argument("literals must be of size 1");
@@ -52,24 +52,28 @@ class Lexer {
 class Token {
     private:
         std::string tok;
-        auto value;
+        std::string value;
 
         std::string regex;
     
     public:
-        std::string getTok () {
+        constexpr std::string getTok () {
             return tok;
         }
 
-        auto getValue () {
+        constexpr std::string getValue () {
             return value;
         }
 
-        std::ostream& operator<< (std::ostream &s, const Token &token) {
-            return s << token.getTok() << ":" << token.getValue();
-        }
-
 };
+
+std::ostream& operator<< (std::ostream &s, const Token &token) {
+    if (token.getValue() != "") {
+        return s << token.getTok() << ":" << token.getValue();    
+    } else {
+        return s << token.getTok();
+    }
+}
 
 /* class Position {
 
