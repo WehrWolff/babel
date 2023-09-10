@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <list>
+#include <map>
 #include <regex>
 #include <stdexcept>
 
@@ -15,6 +16,7 @@ class Lexer {
         std::string block_comment = "===";
 
         std::list<std::string> literals; //{"+", "-", "*", "/"};
+        std::map<std::string, std::string> keywords; // name -> regex
 
         enum Token {
             TOKEN_NUMBER = -1, //"NUMBER"
@@ -37,6 +39,10 @@ class Lexer {
 
         void setBlockComment (std::string _block_comment) {
             block_comment = _block_comment;
+        }
+        
+        void setKeywords (std::list<std::string> _keywords) {
+            keywords = _keywords;
         }
 
         void setLiterals (std::list<std::string> _literals) {
