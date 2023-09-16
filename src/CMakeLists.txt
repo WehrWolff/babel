@@ -1,1 +1,1 @@
-add_executable(myLang shell.cpp)
+add_executable(myLang shell.cpp lexer.h)
