@@ -1,1 +1,1 @@
-add_executable(myLang main.cpp)
+add_executable(myLang shell.cpp)
