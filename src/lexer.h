@@ -8,6 +8,7 @@
 class Lexer {
     private:
         //std::regex_match("subject", std::regex("\s"))
+        std::list<Token> tokens;
 
         const std::string linechange = "\n";
 
@@ -43,6 +44,17 @@ class Lexer {
             }
             literals = _literals;
         }
+
+        /*
+        void tokenize() {
+            for (Token const& tk : tokens) {
+                
+                if (tk.getValue() == "") {
+                    
+                }
+            }          
+        }
+        */
 };
 
 class Token {
@@ -51,6 +63,8 @@ class Token {
         std::string value;
 
         std::string regex;
+
+        Position index;
     
     public:
         constexpr std::string getTok () {
@@ -59,6 +73,10 @@ class Token {
 
         constexpr std::string getValue () {
             return value;
+        }
+
+        void setRegex (std::string _regex) {
+            regex = _regex;
         }
 
 };
@@ -71,6 +89,34 @@ std::ostream& operator<< (std::ostream &s, const Token &token) {
     }
 }
 
-/* class Position {
+class Position {
+    private:
+        int line = 0;
+        int col = -1;
+        int ind = -1;
 
-}; */
+        std::string file_name;        
+
+        std::string text;
+        char current_char = (char) 0;        
+
+        //advance on init
+
+    public:
+        void advance () {
+            col++;
+            ind++;
+            
+            if (current_char == '\n') {
+                line++;
+                col = 0;
+            }
+            
+            col++;
+            current_char = col < text.size() ? text[col] : (char) 0;
+        }
+
+        char getCurrentChar () {
+            return current_char;
+        }
+};
