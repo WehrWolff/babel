@@ -7,8 +7,17 @@
 
 class Lexer {
     private:
+        std::string file_name; //needs to be constructed
+        std::string text; //needs to be constructed
+        
+        Position pos;
+
+        char current_char = (char) 0;
+        //needs to advance
+
         //std::regex_match("subject", std::regex("\s"))
-        std::list<Token> tokens;
+        std::list<Token> internal_tokens;
+        //own class for internal tokens because of regex?
 
         const std::string linechange = "\n";
 
@@ -45,16 +54,26 @@ class Lexer {
             literals = _literals;
         }
 
-        /*
+        void advance () {
+            pos.advance();                        
+            current_char = pos.getInd() < text.size() ? text[pos.getInd()] : (char) 0;
+        }
+
         void tokenize() {
-            for (Token const& tk : tokens) {
+            std::list<Token> tokens;
+            /*for (Token const& tk : tokens) {
                 
                 if (tk.getValue() == "") {
                     
                 }
-            }          
+            }*/
+
+            while (current_char != (char) 0) {
+                
+            }
+
         }
-        */
+        
 };
 
 class Token {
@@ -63,8 +82,6 @@ class Token {
         std::string value;
 
         std::string regex;
-
-        Position index;
     
     public:
         constexpr std::string getTok () {
@@ -91,16 +108,15 @@ std::ostream& operator<< (std::ostream &s, const Token &token) {
 
 class Position {
     private:
-        int line = 0;
-        int col = -1;
-        int ind = -1;
+        int line = 0;//can get constructed
+        int col = -1;//can get constructed
+        int ind = -1;//can get constructed
 
         std::string file_name;        
 
-        std::string text;
-        char current_char = (char) 0;        
+        std::string text;     
 
-        //advance on init
+        //advance on init -> no advance for position when construted
 
     public:
         void advance () {
@@ -110,13 +126,10 @@ class Position {
             if (current_char == '\n') {
                 line++;
                 col = 0;
-            }
-            
-            col++;
-            current_char = col < text.size() ? text[col] : (char) 0;
+            }            
         }
 
-        char getCurrentChar () {
-            return current_char;
+        constexpr int getInd () {
+            return ind;
         }
 };
