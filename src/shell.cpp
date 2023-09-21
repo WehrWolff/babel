@@ -1,13 +1,12 @@
 #include <iostream>
 #include <string>
-using namespace std;
 
 int main(){
     while(true){
-        string text;
+        std::string text;
         cout << "myLang> ";
         getline(cin, text);
-        //Lexer, Tokenizer
+        run("repl", text);
         cout << text << endl;
     }
     return 0;
