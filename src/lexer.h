@@ -175,6 +175,7 @@ class Lexer {
                     default:
                         return {};
                 }
+                advance();
             }
 
             return tokens;
