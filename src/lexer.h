@@ -131,7 +131,7 @@ class Lexer {
             block_comment = _block_comment;
         }
         
-        void setKeywords (std::list<std::string> _keywords) {
+        void setKeywords (std::map<std::string, std::string> _keywords) {
             keywords = _keywords;
         }
 
