@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include "lexer.h"
 
 int main(){
     while(true){
