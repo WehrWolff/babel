@@ -5,6 +5,89 @@
 #include <regex>
 #include <stdexcept>
 
+class Internal_Token {
+    private:
+        std::string tok;
+        std::string value;
+
+    public:
+        Internal_Token (std::string _tok, std::string _value = "") {
+            tok = _tok;
+            value = _value;
+        }
+
+        constexpr std::string getTok () {
+            return tok;
+        }
+
+        constexpr std::string getValue () {
+            return value;
+        }
+};
+
+std::ostream& operator<< (std::ostream &s, const Internal_Token &token) {
+    if (token.getValue() != "") {
+        return s << token.getTok() << ":" << token.getValue();    
+    } else {
+        return s << token.getTok();
+    }
+}
+
+class Token {
+    private:
+        std::string tok;
+        std::string regex;
+    
+    public:
+        Token (std::string _tok, std::string _regex) {
+            tok = _tok;
+            regex = _regex;
+        }
+
+        constexpr std::string getTok () {
+            return tok;
+        }
+
+        void setRegex (std::string _regex) {
+            regex = _regex;
+        }
+
+};
+
+class Position {
+    private:
+        int line;
+        int col;
+        int ind;
+
+        std::string file_name;
+        std::string text;
+
+    public:
+        Position () = default;
+        Position (int _line, int _col, int _ind, std::string _file_name, std::string _text) {
+            line = _line;
+            col = _col;
+            ind = _ind;
+            file_name = _file_name;
+            text = _text;
+        }
+
+        void advance (char current_char) {
+            col++;
+            ind++;
+            
+            if (current_char == '\n') {
+                line++;
+                col = 0;
+            }            
+        }
+
+        constexpr int getInd () {
+            return ind;
+        }
+};
+
 class Lexer {
     private:
         std::string file_name;
@@ -99,95 +182,7 @@ class Lexer {
         
 };
 
-class Internal_Token {
-    private:
-        std::string tok;
-        std::string value;
-
-    public:
-        Internal_Token (std::string _tok, std::string _value = "") {
-            tok = _tok;
-            value = _value;
-        }
-
-        constexpr std::string getTok () {
-            return tok;
-        }
-
-        constexpr std::string getValue () {
-            return value;
-        }
-};
-
-std::ostream& operator<< (std::ostream &s, const Internal_Token &token) {
-    if (token.getValue() != "") {
-        return s << token.getTok() << ":" << token.getValue();    
-    } else {
-        return s << token.getTok();
-    }
+std::list<Internal_Token> run (std::string file_name, std::string text) {
+    Lexer lexer = Lexer(file_name, text); //construct with file name, text
+    return lexer.tokenize();
 }
-
-class Token {
-    private:
-        std::string tok;
-        std::string regex;
-    
-    public:
-        Token (std::string _tok, std::string _regex) {
-            tok = _tok;
-            regex = _regex;
-        }
-
-        constexpr std::string getTok () {
-            return tok;
-        }
-
-        constexpr std::string getValue () {
-            return value;
-        }
-
-        void setRegex (std::string _regex) {
-            regex = _regex;
-        }
-
-};
-
-class Position {
-    private:
-        int line;
-        int col;
-        int ind;
-
-        std::string file_name;
-        std::string text;
-
-    public:
-        Position (int _line, int _col, int _ind, std::string _file_name, std::string _text) {
-            line = _line;
-            col = _col;
-            ind = _ind;
-            file_name = _file_name;
-            text = _text;
-            advance();
-        }
-
-        void advance (char current_char) {
-            col++;
-            ind++;
-            
-            if (current_char == '\n') {
-                line++;
-                col = 0;
-            }            
-        }
-
-        constexpr int getInd () {
-            return ind;
-        }
-};
-
-public:
-    std::list<Internal_Token> run (std::string file_name, std::string text) {
-        Lexer lexer = Lexer(file_name, text); //construct with file name, text
-        return lexer.tokenize();
-    }
