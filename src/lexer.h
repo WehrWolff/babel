@@ -7,16 +7,15 @@
 
 class Lexer {
     private:
-        std::string file_name; //needs to be constructed
-        std::string text; //needs to be constructed
+        std::string file_name;
+        std::string text;
         
         Position pos;
 
-        char current_char = (char) 0;
-        //needs to advance
+        char current_char;
 
         //std::regex_match("subject", std::regex("\s"))
-        std::list<Token> internal_tokens;
+        std::list<Token> tokens;
         //own class for internal tokens because of regex?
 
         const std::string linechange = "\n";
@@ -29,6 +28,14 @@ class Lexer {
         std::map<std::string, std::string> keywords; // name -> regex        
 
     public:
+        Lexer (std::string _file_name, std::string _text) {
+            file_name = _file_name;
+            text = _text;
+            pos = Position(0, -1, -1, _file_name, _text);
+            current_char = (char) 0;
+            advance();
+        }
+
         void setIgnore (std::string _ignore) {
             ignore = _ignore;
         }
@@ -55,12 +62,12 @@ class Lexer {
         }
 
         void advance () {
-            pos.advance();                        
+            pos.advance(current_char);
             current_char = pos.getInd() < text.size() ? text[pos.getInd()] : (char) 0;
         }
 
-        void tokenize() {
-            std::list<Token> tokens;
+        std::list<Internal_Token> tokenize() {
+            std::list<Internal_Token> tokens;
             /*for (Token const& tk : tokens) {
                 
                 if (tk.getValue() == "") {
@@ -69,21 +76,68 @@ class Lexer {
             }*/
 
             while (current_char != (char) 0) {
-                
+                switch (current_char) {
+                    case '+':
+                        tokens.push_back(Internal_Token("PLUS"));
+                        break;
+                    case '-':
+                        tokens.push_back(Internal_Token("MINUS"));
+                        break;
+                    case '*':
+                        tokens.push_back(Internal_Token("MULTIPLY"));
+                        break;
+                    case '/':
+                        tokens.push_back(Internal_Token("DIVIDE"));
+                        break;
+                    default:
+                        return std::list;
+                }
             }
 
+            return tokens;
         }
         
 };
 
-class Token {
+class Internal_Token {
     private:
         std::string tok;
         std::string value;
 
+    public:
+        Internal_Token (std::string _tok, std::string _value = "") {
+            tok = _tok;
+            value = _value;
+        }
+
+        constexpr std::string getTok () {
+            return tok;
+        }
+
+        constexpr std::string getValue () {
+            return value;
+        }
+};
+
+std::ostream& operator<< (std::ostream &s, const Internal_Token &token) {
+    if (token.getValue() != "") {
+        return s << token.getTok() << ":" << token.getValue();    
+    } else {
+        return s << token.getTok();
+    }
+}
+
+class Token {
+    private:
+        std::string tok;
         std::string regex;
     
     public:
+        Token (std::string _tok, std::string _regex) {
+            tok = _tok;
+            regex = _regex;
+        }
+
         constexpr std::string getTok () {
             return tok;
         }
@@ -108,18 +162,24 @@ std::ostream& operator<< (std::ostream &s, const Token &token) {
 
 class Position {
     private:
-        int line = 0;//can get constructed
-        int col = -1;//can get constructed
-        int ind = -1;//can get constructed
+        int line;
+        int col;
+        int ind;
 
-        std::string file_name;        
-
-        std::string text;     
-
-        //advance on init -> no advance for position when construted
+        std::string file_name;
+        std::string text;
 
     public:
-        void advance () {
+        Position (int _line, int _col, int _ind, std::string _file_name, std::string _text) {
+            line = _line;
+            col = _col;
+            ind = _ind;
+            file_name = _file_name;
+            text = _text;
+            advance();
+        }
+
+        void advance (char current_char) {
             col++;
             ind++;
             
@@ -133,3 +193,9 @@ class Position {
             return ind;
         }
 };
+
+public:
+    std::list<Internal_Token> run (std::string file_name, std::string text) {
+        Lexer lexer = Lexer(file_name, text); //construct with file name, text
+        return lexer.tokenize();
+    }
