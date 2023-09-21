@@ -173,7 +173,7 @@ class Lexer {
                         tokens.push_back(Internal_Token("DIVIDE"));
                         break;
                     default:
-                        return std::list;
+                        return {};
                 }
             }
 
