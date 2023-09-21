@@ -2,6 +2,7 @@
 #include <string>
 #include <list>
 #include <map>
+#include <variant>
 #include <regex>
 #include <stdexcept>
 
@@ -149,7 +150,7 @@ class Lexer {
             current_char = pos.getInd() < text.size() ? text[pos.getInd()] : (char) 0;
         }
 
-        std::list<Internal_Token> tokenize() {
+        std::variant<std::list<Internal_Token>, std::string> tokenize() {
             std::list<Internal_Token> tokens;
             /*for (Token const& tk : tokens) {
                 
@@ -173,7 +174,7 @@ class Lexer {
                         tokens.push_back(Internal_Token("DIVIDE"));
                         break;
                     default:
-                        return {};
+                        return "Hm, I've never seen this before";
                 }
                 advance();
             }
@@ -183,7 +184,7 @@ class Lexer {
         
 };
 
-std::list<Internal_Token> run (std::string file_name, std::string text) {
+std::variant<std::list<Internal_Token>, std::string> run (std::string file_name, std::string text) {
     Lexer lexer = Lexer(file_name, text); //construct with file name, text
     return lexer.tokenize();
 }
