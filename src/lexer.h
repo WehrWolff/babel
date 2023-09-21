@@ -152,14 +152,6 @@ class Token {
 
 };
 
-std::ostream& operator<< (std::ostream &s, const Token &token) {
-    if (token.getValue() != "") {
-        return s << token.getTok() << ":" << token.getValue();    
-    } else {
-        return s << token.getTok();
-    }
-}
-
 class Position {
     private:
         int line;
