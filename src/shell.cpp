@@ -21,7 +21,7 @@ int main(){
         string text;
         cout << "myLang> ";
         getline(cin, text);
-        list<Internal_Token> print = run("repl", text);
+        list<Token> print = run("repl", text);
         cout << print << endl;
     }
     return 0;
