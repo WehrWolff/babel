@@ -92,7 +92,7 @@ class Lexer {
             current_char = (char) 0;
             advance();
         }
-
+        /*
         void setIgnore (std::string _ignore) {
             ignore = _ignore;
         }
@@ -116,6 +116,11 @@ class Lexer {
                 }
             }
             literals = _literals;
+        }
+        */
+        
+        void setSpecs (std::list<std::pair<std::string, std::string>> _specs) {
+            token_specs = _specs;
         }
 
         void advance () {
@@ -164,6 +169,8 @@ std::list<Token> run (std::string file_name, std::string text) {
         {"IF", "IF"},
         {"VAR", "[a-zA-Z_][a-zA-Z0-9_]*"}
     };
-
+    
+    lexer.setSpecs(token_specs);
+    
     return lexer.tokenize();
 }
