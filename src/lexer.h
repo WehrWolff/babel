@@ -158,5 +158,12 @@ class Lexer {
 
 std::list<Token> run (std::string file_name, std::string text) {
     Lexer lexer = Lexer(file_name, text); //construct with file name, text
+
+    std::list<std::pair<std::string, std::string>> token_specs = {
+        {"STRING", "\"[^\"]*\""},
+        {"IF", "IF"},
+        {"VAR", "[a-zA-Z_][a-zA-Z0-9_]*"}
+    };
+
     return lexer.tokenize();
 }
