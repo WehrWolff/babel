@@ -5,13 +5,13 @@
 #include <regex>
 #include <stdexcept>
 
-class Internal_Token {
+class Token {
     private:
         std::string tok;
         std::string value;
 
     public:
-        Internal_Token (std::string _tok, std::string _value = "") {
+        Token (std::string _tok, std::string _value) {
             tok = _tok;
             value = _value;
         }
@@ -25,34 +25,13 @@ class Internal_Token {
         }
 };
 
-std::ostream& operator<< (std::ostream &s, const Internal_Token &token) {
+std::ostream& operator<< (std::ostream &s, const Token &token) {
     if (token.getValue() != "") {
         return s << token.getTok() << ":" << token.getValue();    
     } else {
         return s << token.getTok();
     }
 }
-
-class Token {
-    private:
-        std::string tok;
-        std::string regex;
-    
-    public:
-        Token (std::string _tok, std::string _regex) {
-            tok = _tok;
-            regex = _regex;
-        }
-
-        constexpr std::string getTok () {
-            return tok;
-        }
-
-        void setRegex (std::string _regex) {
-            regex = _regex;
-        }
-
-};
 
 class Position {
     private:
@@ -93,22 +72,17 @@ class Lexer {
         std::string file_name;
         std::string text;
         
+        std::list<std::pair<std::string, std::string>> token_specs;
+
         Position pos;
-
         char current_char;
-
-        //std::regex_match("subject", std::regex("\s"))
-        std::list<Token> tokens;
-        //own class for internal tokens because of regex?
-
-        const std::string linechange = "\n";
-
+                
+        /*const std::string linechange = "\n";
         std::string ignore = " \t";
         std::string line_comment = "~";
         std::string block_comment = "===";
-
-        std::list<std::string> literals; //{"+", "-", "*", "/"};
-        std::map<std::string, std::string> keywords; // name -> regex        
+        std::list<std::string> literals;
+        std::map<std::string, std::string> keywords;*/
 
     public:
         Lexer (std::string _file_name, std::string _text) {
@@ -149,41 +123,40 @@ class Lexer {
             current_char = pos.getInd() < text.size() ? text[pos.getInd()] : (char) 0;
         }
 
-        std::list<Internal_Token> tokenize() {
-            std::list<Internal_Token> tokens;
-            /*for (Token const& tk : tokens) {
-                
-                if (tk.getValue() == "") {
-                    
-                }
-            }*/
+        std::list<Token> tokenize() {
+            std::list<Token> tokens;
+            std::string input_stream = text;
 
-            while (current_char != (char) 0) {
-                switch (current_char) {
-                    case '+':
-                        tokens.push_back(Internal_Token("PLUS"));
+            while (!input_stream.empty()) {
+                bool matched = false;
+                for (const auto& spec : token_specs) {
+                    const std::string& token_type = spec.first;
+                    const std::string& pattern = spec.second;
+
+                    std::regex regex_pattern("^" + pattern);
+                    std::smatch re;
+
+                    if (regex_search(input_stream, re, regex_pattern)) {
+                        std::string match = re[0];
+                        tokens.push_back(Token(token_type, match));
+                        input_stream = input_stream.substr(match.length());
+                        matched = true;
                         break;
-                    case '-':
-                        tokens.push_back(Internal_Token("MINUS"));
-                        break;
-                    case '*':
-                        tokens.push_back(Internal_Token("MULTIPLY"));
-                        break;
-                    case '/':
-                        tokens.push_back(Internal_Token("DIVIDE"));
-                        break;
-                    default:
-                        return {};
+                    }
                 }
-                advance();
-            }
+
+                if (!matched) {
+                    //ignore or handle errors
+                    input_stream = input_stream.substr(1);
+                }
+            }            
 
             return tokens;
         }
         
 };
 
-std::list<Internal_Token> run (std::string file_name, std::string text) {
+std::list<Token> run (std::string file_name, std::string text) {
     Lexer lexer = Lexer(file_name, text); //construct with file name, text
     return lexer.tokenize();
 }
