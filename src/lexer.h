@@ -164,10 +164,30 @@ class Lexer {
 std::list<Token> run (std::string file_name, std::string text) {
     Lexer lexer = Lexer(file_name, text); //construct with file name, text
 
-    std::list<std::pair<std::string, std::string>> token_specs = {
+    std::list<std::pair<std::string, std::string>> token_specs = {        
+        {"VAR", "[a-zA-Z_][a-zA-Z0-9_-]*"},
         {"STRING", "\"[^\"]*\""},
+        {"CHAR", "'[^']{1}'"},
+        {"INTEGER", "\d*"},
+        {"FLOATING_POINT", "\d*\.\d+"},
+        {"BOOL_1" = "TRUE"},
+        {"BOOL_0" = "FALSE"},
+        {"PLUS", "+"},
+        {"MINUS", "-"},
+        {"MULTIPLY", "*"},
+        {"DIVIDE", "/"},
+        {"POWER", "^"},
+        {"EQUALS", "="},
+        {"LPAREN", "("},
+        {"RPAREN", ")"},
         {"IF", "IF"},
-        {"VAR", "[a-zA-Z_][a-zA-Z0-9_]*"}
+        {"ELSE", "ELSE"},
+        {"EQEQ", "=="},
+        {"LT", "<"},
+        {"GT", ">"},
+        {"LTEQ", "<="},
+        {"GTEQ", ">="},
+        {"NOTEQ", "!="}
     };
     
     lexer.setSpecs(token_specs);
