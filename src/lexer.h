@@ -27,7 +27,7 @@ class Token {
 
 std::ostream& operator<< (std::ostream &s, const Token &token) {
     if (token.getValue() != "") {
-        return s << token.getTok() << ":" << token.getValue();    
+        return s << token.getTok() << " : " << token.getValue();    
     } else {
         return s << token.getTok();
     }
@@ -131,20 +131,21 @@ class Lexer {
         std::list<Token> tokenize() {
             std::list<Token> tokens;
             std::string input_stream = text;
-
+            
             while (!input_stream.empty()) {
                 bool matched = false;
-                for (const auto& spec : token_specs) {
+                for (const std::pair<std::string, std::string>& spec : token_specs) {
                     const std::string& token_type = spec.first;
                     const std::string& pattern = spec.second;
 
                     std::regex regex_pattern("^" + pattern);
                     std::smatch re;
-
+                    
                     if (regex_search(input_stream, re, regex_pattern)) {
                         std::string match = re[0];
+                        if (match.size()==0) break; //fixing wrong matches
                         tokens.push_back(Token(token_type, match));
-                        input_stream = input_stream.substr(match.length());
+                        input_stream = re.suffix();
                         matched = true;
                         break;
                     }
@@ -165,29 +166,28 @@ std::list<Token> run (std::string file_name, std::string text) {
     Lexer lexer = Lexer(file_name, text); //construct with file name, text
 
     std::list<std::pair<std::string, std::string>> token_specs = {        
-        {"VAR", "[a-zA-Z_][a-zA-Z0-9_-]*"},
-        {"STRING", "\"[^\"]*\""},
+        {"STRING", R"("[^"]*")"},
         {"CHAR", "'[^']{1}'"},
-        {"INTEGER", "\d*"},
-        {"FLOATING_POINT", "\d*\.\d+"},
-        {"BOOL_1" = "TRUE"},
-        {"BOOL_0" = "FALSE"},
-        {"PLUS", "+"},
+        {"FLOATING_POINT", "\\d*\\.\\d+"},
+        {"BOOL", "(TRUE|FALSE)"},
+        {"PLUS", "\\+"},
         {"MINUS", "-"},
-        {"MULTIPLY", "*"},
+        {"MULTIPLY", "\\*"},
         {"DIVIDE", "/"},
-        {"POWER", "^"},
-        {"EQUALS", "="},
-        {"LPAREN", "("},
-        {"RPAREN", ")"},
+        {"POWER", "\\^"},
+        {"LPAREN", "\\("},
+        {"RPAREN", "\\)"},
         {"IF", "IF"},
         {"ELSE", "ELSE"},
         {"EQEQ", "=="},
-        {"LT", "<"},
-        {"GT", ">"},
         {"LTEQ", "<="},
         {"GTEQ", ">="},
-        {"NOTEQ", "!="}
+        {"NOTEQ", "!="},
+        {"EQUALS", "="},
+        {"LT", "<"},
+        {"GT", ">"},
+        {"VAR", "[a-zA-Z_][a-zA-Z0-9_-]*"},
+        {"INTEGER", "\\d*"} //leave INTEGER here, it matches all expressions
     };
     
     lexer.setSpecs(token_specs);
