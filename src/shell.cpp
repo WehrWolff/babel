@@ -21,6 +21,7 @@ int main(){
         string text;
         cout << "myLang> ";
         getline(cin, text);
+        if (text == "exit") break;
         list<Token> print = run("repl", text);
         cout << print << endl;
     }
