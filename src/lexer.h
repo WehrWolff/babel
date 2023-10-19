@@ -7,20 +7,17 @@
 
 class Token {
     private:
-        std::string tok;
-        std::string value;
+        const std::string tok;
+        const std::string value;
 
     public:
-        Token (std::string _tok, std::string _value) {
-            tok = _tok;
-            value = _value;
-        }
+        Token (std::string _tok, std::string _value) : tok(_tok), value(_value) {}
 
-        constexpr std::string getTok () {
+        std::string getTok () const {
             return tok;
         }
 
-        constexpr std::string getValue () {
+        std::string getValue () const {
             return value;
         }
 };
