@@ -59,7 +59,7 @@ class Position {
             }            
         }
 
-        constexpr int getInd () {
+        int getInd () const {
             return ind;
         }
 };
