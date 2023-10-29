@@ -1,8 +1,8 @@
-# Babel
-
 <div align=center>
     <img src="/media/babelLogoText.png">
 </div>
+
+# Babel
 
 Babel is a custom programming language inspired by C and C++. The main goal of this project is to create a fast, easy-to-use programming language that is accessible to programmers of all experience levels.
 

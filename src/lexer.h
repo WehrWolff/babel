@@ -7,14 +7,14 @@
 
 class Token {
     private:
-        const std::string tok;
+        const std::string type;
         const std::string value;
 
     public:
-        Token (std::string _tok, std::string _value) : tok(_tok), value(_value) {}
+        Token (std::string _type, std::string _value) : type(_type), value(_value) {}
 
-        std::string getTok () const {
-            return tok;
+        std::string getType () const {
+            return type;
         }
 
         std::string getValue () const {
@@ -24,9 +24,9 @@ class Token {
 
 std::ostream& operator<< (std::ostream &s, const Token &token) {
     if (token.getValue() != "") {
-        return s << token.getTok() << " : " << token.getValue();    
+        return s << token.getType() << " : " << token.getValue();    
     } else {
-        return s << token.getTok();
+        return s << token.getType();
     }
 }
 
