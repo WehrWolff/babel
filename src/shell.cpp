@@ -19,7 +19,7 @@ ostream& operator<<(ostream& os, const list<T>& myList) {
 int main(){
     while(true){
         string text;
-        cout << "myLang> ";
+        cout << "babel> ";
         getline(cin, text);
         if (text == "exit") break;
         list<Token> print = run("repl", text);

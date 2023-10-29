@@ -16,7 +16,7 @@ We strongly recommend that users keep their installations up to date to benefit 
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please [draft a new security advisory](https://github.com/WehrWolff/myLang/security/advisories/new). <br>
+If you discover a security vulnerability, please [draft a new security advisory](https://github.com/WehrWolff/babel/security/advisories/new). <br>
 **Please do not create a public issue for the vulnerability.**
 
 You should include the following information:

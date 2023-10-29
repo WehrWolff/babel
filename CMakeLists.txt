@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(myLang)
+project(babel)
 
-add_executable(myLang src/shell.cpp src/lexer.h)
+add_executable(babel src/shell.cpp src/lexer.h)
 
