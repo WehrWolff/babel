@@ -58,19 +58,15 @@ typedef void (*standalone_function_t)();
         }
 }; */
 
+const std::string EPSILON = "''";
+
 class Rule;
 
-class Grammar {
-    public:
-        std::list<std::string> alphabet;
-        std::list<std::string> nonterminals;
-        std::list<std::string> terminals;
-        std::list<NonTerminal> rules;
-        std::string text;
-        //firsts, follows
-        //check all types
+// functions see the tools file
 
-        void initializeRulesAndAlphabetAndNonterminals(){
+class Grammar {
+    private:
+        void initializeRulesAndAlphabetAndNonterminals () {
             std::list<std::string> lines; //text.split("\n")
 
             for (int i = 0; i < lines.size(); i++) {
@@ -83,6 +79,39 @@ class Grammar {
                 }
             }
         }
+
+        void initializeAlphabetAndTerminals () {
+            for (const Rule& rule : rules) {
+                for (const std::string& symbol : rule.development) {
+                    if (symbol != EPSILON && !std::find(grammar.nonterminals.begin(), grammar.nonterminals.end(), symbol) == grammar.nonterminals.end()) {
+                        grammar.alphabet.push_back(symbol);
+                        grammar.terminals.push_back(symbol);
+                    }
+                }
+            }
+        }
+
+        void initializeFirsts () {
+            bool notDone;
+
+            do{
+                notDone = false;
+
+                for (const Rule& rule : grammar.rules) {
+                    getOrCreateArray(grammar.firsts, rule.nonterminal);
+                }
+            }
+        }
+
+    public:
+        std::list<std::string> alphabet;
+        std::list<std::string> nonterminals;
+        std::list<std::string> terminals;
+        std::list<Rule> rules;
+        std::string text;
+        std::map<std::string, std::list<std::string>> firsts;
+        std::map<std::string, std::list<std::string>> follows;
+        //check all types
 
         Grammar(std::list<NonTerminal> rules) : rules(rules) {
             initializeRulesAndAlphabetAndNonterminals();
@@ -99,6 +128,31 @@ class Grammar {
                     result.push_back(rule);
                 }
             }
+
+            return result;
+        }
+
+        std::list<std::string> getSequenceFirsts(std::list<std::string> sequence) {
+            std::list<std::string> result = {};
+            bool epsilonInSymbolFirsts = true;
+
+            for (const std::string& symbol : sequence) {
+                epsilonInSymbolFirsts = false;
+
+                if (std::find(terminals.begin(), terminals.end(), symbol) != terminals.end()) {
+                    result.push_back(symbol);
+                    break;
+                }
+
+                for (const std::string& first : firsts[symbol]) {
+                    epsilonInSymbolFirsts |= first == EPSILON;
+                    result.push_back(first);
+                }
+
+                if (!epsilonInSymbolFirsts) break;                
+            }
+
+            if (epsilonInSymbolFirsts) result.push_back(EPSILON);
 
             return result;
         }
