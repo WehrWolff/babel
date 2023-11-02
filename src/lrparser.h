@@ -1,10 +1,12 @@
 #include <algorithm>
+#include <boost/algorithm/string.hpp>
 #include <list>
 #include <map>
 #include <regex>
 #include <stack>
 #include <string>
 #include <variant>
+#include "tools.h"
 
 class SyntaxError : public std::exception {
 private:
@@ -62,20 +64,27 @@ const std::string EPSILON = "''";
 
 class Rule;
 
-// functions see the tools file
-
 class Grammar {
     private:
         void initializeRulesAndAlphabetAndNonterminals () {
-            std::list<std::string> lines; //text.split("\n")
+            std::list<std::string> lines = splitString(text, '\n');
 
-            for (int i = 0; i < lines.size(); i++) {
-                std::string line = lines[i]; //trim
+            for (const std::string& _ : lines) {
+                std::string line = boost::trim_copy(_);
 
-                if (line != '') { // possibly remove in the future
-                    Rule rule = new Rule(this, line); // should use unique_pointr here later
+                if (line != "") {
+                    // illegal as it isnt fully defined yet
+                    // should use unique_pointr here later
+                    Rule rule = new Rule(this, line);
 
                     rules.push_back(rule);
+
+                    if (axiom == "") {
+                        axiom = rule.nonterminal;
+                    }
+                    
+                    addUnique(rule.nonterminal, alphabet);
+                    addUnique(rule.nonterminal, nonterminals);
                 }
             }
         }
@@ -83,9 +92,9 @@ class Grammar {
         void initializeAlphabetAndTerminals () {
             for (const Rule& rule : rules) {
                 for (const std::string& symbol : rule.development) {
-                    if (symbol != EPSILON && !std::find(grammar.nonterminals.begin(), grammar.nonterminals.end(), symbol) == grammar.nonterminals.end()) {
-                        grammar.alphabet.push_back(symbol);
-                        grammar.terminals.push_back(symbol);
+                    if (symbol != EPSILON && !std::find(nonterminals.begin(), nonterminals.end(), symbol) == nonterminals.end()) {
+                        addUnique(symbol, alphabet);
+                        addUnique(symbol, terminals);
                     }
                 }
             }
@@ -97,10 +106,16 @@ class Grammar {
             do{
                 notDone = false;
 
-                for (const Rule& rule : grammar.rules) {
-                    getOrCreateArray(grammar.firsts, rule.nonterminal);
+                for (const Rule& rule : rules) {
+                    std::list<std::string> nonterminalFirsts = getOrCreateArray(firsts, rule.nonterminal);
+
+                    if (rule.development.size() == 1 && rule.development.front == EPSILON) {
+                        notDone |= addUnique(EPSILON, nonterminalFirsts);
+                    } else {
+                        notDone |= collectDevelopmentFirsts(this, rule.development, nonterminalFirsts);
+                    }
                 }
-            }
+            } while (notDone);
         }
 
     public:
@@ -111,9 +126,10 @@ class Grammar {
         std::string text;
         std::map<std::string, std::list<std::string>> firsts;
         std::map<std::string, std::list<std::string>> follows;
+        std::string axiom;
         //check all types
 
-        Grammar(std::list<NonTerminal> rules) : rules(rules) {
+        Grammar(std::string text) {
             initializeRulesAndAlphabetAndNonterminals();
             initializeAlphabetAndTerminals();
             initializeFirsts();
@@ -140,19 +156,22 @@ class Grammar {
                 epsilonInSymbolFirsts = false;
 
                 if (std::find(terminals.begin(), terminals.end(), symbol) != terminals.end()) {
-                    result.push_back(symbol);
+                    addUnique(symbol, result);
+
                     break;
                 }
 
                 for (const std::string& first : firsts[symbol]) {
                     epsilonInSymbolFirsts |= first == EPSILON;
-                    result.push_back(first);
+                    addUnique(first, result);
                 }
+                // check line below again
+                epsilonInSymbolFirsts |= firsts[symbol].size() == 0
 
                 if (!epsilonInSymbolFirsts) break;                
             }
 
-            if (epsilonInSymbolFirsts) result.push_back(EPSILON);
+            if (epsilonInSymbolFirsts) addUnique(EPSILON, result);
 
             return result;
         }
