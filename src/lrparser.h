@@ -67,7 +67,7 @@ class Rule;
 class Grammar {
     private:
         void initializeRulesAndAlphabetAndNonterminals () {
-            std::list<std::string> lines = splitString(text, '\n');
+            std::list<std::string> lines = splitString(text, "\n");
 
             for (const std::string& _ : lines) {
                 std::string line = boost::trim_copy(_);
@@ -100,6 +100,35 @@ class Grammar {
             }
         }
 
+        bool collectDevelopmentFirsts(std::list<std::string> development, std::list<std::string> nonterminalFirsts) {
+            bool result = false;
+            bool epsilonInSymbolFirsts = true;
+
+            for (const std::string& symbol : development) {
+                epsilonInSymbolFirsts = false;
+
+                if (isElement(symbol, terminals)) {
+                    result |= addUnique(symbol, nonterminalFirsts);
+                    
+                    break;
+                }
+
+                //check for loop (potentially places symbol in firsts)
+                for (const std::string& first : firsts[symbol]) {
+                    epsilonInSymbolFirsts |= first == EPSILON;
+                    result |= addUnique(first, nonterminalFirsts);
+                }
+
+                if (!epsilonInSymbolFirsts) break;
+            }
+
+            if (epsilonInSymbolFirsts) {
+                result |= addUnique(EPSILON, nonterminalFirsts);
+            }
+
+            return result;
+        }
+
         void initializeFirsts () {
             bool notDone;
 
@@ -109,10 +138,46 @@ class Grammar {
                 for (const Rule& rule : rules) {
                     std::list<std::string> nonterminalFirsts = getOrCreateArray(firsts, rule.nonterminal);
 
-                    if (rule.development.size() == 1 && rule.development.front == EPSILON) {
+                    if (rule.development.size() == 1 && rule.development.front() == EPSILON) {
                         notDone |= addUnique(EPSILON, nonterminalFirsts);
                     } else {
-                        notDone |= collectDevelopmentFirsts(this, rule.development, nonterminalFirsts);
+                        notDone |= collectDevelopmentFirsts(rule.development, nonterminalFirsts);
+                    }
+                }
+            } while (notDone);
+        }
+
+        void initializeFollows() {
+            bool notDone;
+
+            do {
+                notDone = false;
+
+                for (const Rule& rule : rules) {
+                    if (rule == rules.front()) {
+                        std::list<std::string> nonterminalFollows = getOrCreateArray(follows, rule.nonterminal);
+                        notDone |= addUnique ("$", nonterminalFollows);
+                    }
+
+                    for (const std::string& symbol : rule.development) {
+                        if (isElement(symbol, nonterminals)) {
+                            std::list<std::string> symbolFollows = getOrCreateArray(follows, symbol);
+                            // slice function
+                            std::list<std::string> afterSymbolFirsts;
+
+                            for (const std::string& first : afterSymbolFirsts) {
+                                if (first == EPSILON) {
+                                    //check again (potentially places symbol in follows)
+                                    std::list<std::string> nonterminalFollows = follows[rule.nonterminal];
+
+                                    for (const std::string& _ : nonterminalFollows) {
+                                        notDone |= addUnique(_, symbolFollows);
+                                    }
+                                } else {
+                                    notDone |= addUnique(first, symbolFollows);
+                                }
+                            }
+                        }
                     }
                 }
             } while (notDone);
@@ -160,7 +225,8 @@ class Grammar {
 
                     break;
                 }
-
+                
+                //check for loop (potentially places symbol in firsts)
                 for (const std::string& first : firsts[symbol]) {
                     epsilonInSymbolFirsts |= first == EPSILON;
                     addUnique(first, result);
@@ -174,13 +240,7 @@ class Grammar {
             if (epsilonInSymbolFirsts) addUnique(EPSILON, result);
 
             return result;
-        }
-
-        std::list<std::string> splitAndTrim(std::string in, std::string trim) {
-            std::list<std::string> result = {};
-
-            return result;
-        }
+        }       
 
         /* bool validate(std::list symbols, Token nextTok) {
             std::string token_type = nextTok.getType();
@@ -238,15 +298,14 @@ class Rule {
         std::list<std::string> development;        
         
         Rule(Grammar& grammar, std::string text) : grammar(grammar), index(grammar.rules.size()) {
-            size_t arrowIndex = text.find("->");
-            nonterminal = text.substr(0, arrowIndex);
-            pattern = grammar.splitAndTrim(nonterminal, " ");
-            std::string developmentStr = text.substr(arrowIndex + 2);
-            development = grammar.splitAndTrim(developmentStr, " ");
+            std::list<std::string> split = splitString(text, "->");
+            nonterminal = boost::trim_copy(split.front());
+            pattern = trimElements(splitString(nonterminal, " "));
+            development = trimElements(splitString(boost::trim_copy(split.back()), " "));
         }
 };
 
-class BasicItem {
+/* class BasicItem {
     public:
         Rule& rule;
         int dotIndex; //int?
@@ -260,6 +319,13 @@ class BasicItem {
         }
 };
 
-/* class BasicLR1Item : public BasicItem {
+class BasicLR1Item : public BasicItem {
     
+};
+
+class Item : public BasicLR1Item {
+    public:
+        const std::string grammarType = "LR(1)";
+
+        Item (Rule& rule, int dotIndex) : BasicLR1Item(rule, dotIndex) {}
 }; */

@@ -2,7 +2,6 @@
 #include <list>
 #include <boost/algorithm/string.hpp>
 #include <string>
-#include <sstream>
 
 template <typename T>
 typename std::list<T>::iterator findIndex(std::list<T>& myList, const T& value) {
@@ -67,14 +66,18 @@ std::list<std::string> trimElements(std::list<std::string> list) {
     return result;
 }
 
-std::list<std::string> splitString(const std::string& input, char delimiter) {
+std::list<std::string> splitString(const std::string& input, const std::string& delimiter) {
     std::list<std::string> result;
-    std::istringstream ss(input);
-    std::string token;
+    size_t startPos = 0;
+    size_t foundPos;
 
-    while (std::getline(ss, token, delimiter)) {
-        result.push_back(token);
+    while ((foundPos = input.find(delimiter, startPos)) != std::string::npos) {
+        result.push_back(input.substr(startPos, foundPos - startPos));
+        startPos = foundPos + delimiter.length();
     }
+
+    // Add the last part of the string
+    result.push_back(input.substr(startPos));
 
     return result;
 }
