@@ -2,6 +2,7 @@
 #include <boost/algorithm/string.hpp>
 #include <list>
 #include <map>
+#include <optional>
 #include <regex>
 #include <stack>
 #include <string>
@@ -205,150 +206,238 @@ class Rule {
 };
 
 void Grammar::initializeRulesAndAlphabetAndNonterminals () {
-            std::list<std::string> lines = splitString(text, "\n");
+    std::list<std::string> lines = splitString(text, "\n");
 
-            for (const std::string& _ : lines) {
-                std::string line = boost::trim_copy(_);
+    for (const std::string& _ : lines) {
+        std::string line = boost::trim_copy(_);
 
-                if (line != "") {
-                    // illegal as it isnt fully defined yet
-                    // should use unique_pointr here later
-                    Rule rule(*this, line);
+        if (line != "") {
+            // illegal as it isnt fully defined yet
+            // should use unique_pointr here later
+            Rule rule(*this, line);
 
-                    rules.push_back(rule);
+            rules.push_back(rule);
 
-                    if (axiom == "") {
-                        axiom = rule.nonterminal;
-                    }
-                    
-                    addUnique(rule.nonterminal, alphabet);
-                    addUnique(rule.nonterminal, nonterminals);
-                }
+            if (axiom == "") {
+                axiom = rule.nonterminal;
             }
+            
+            addUnique(rule.nonterminal, alphabet);
+            addUnique(rule.nonterminal, nonterminals);
         }
+    }
+}
 
 void Grammar::initializeAlphabetAndTerminals () {
-            for (const Rule& rule : rules) {
-                for (const std::string& symbol : rule.development) {
-                    if (symbol != EPSILON && std::find(nonterminals.begin(), nonterminals.end(), symbol) == nonterminals.end()) {
-                        addUnique(symbol, alphabet);
-                        addUnique(symbol, terminals);
-                    }
-                }
+    for (const Rule& rule : rules) {
+        for (const std::string& symbol : rule.development) {
+            if (symbol != EPSILON && std::find(nonterminals.begin(), nonterminals.end(), symbol) == nonterminals.end()) {
+                addUnique(symbol, alphabet);
+                addUnique(symbol, terminals);
             }
         }
+    }
+}
 
 bool Grammar::collectDevelopmentFirsts(std::list<std::string> development, std::list<std::string> nonterminalFirsts) {
-            bool result = false;
-            bool epsilonInSymbolFirsts = true;
+    bool result = false;
+    bool epsilonInSymbolFirsts = true;
 
-            for (const std::string& symbol : development) {
-                epsilonInSymbolFirsts = false;
+    for (const std::string& symbol : development) {
+        epsilonInSymbolFirsts = false;
 
-                if (isElement(symbol, terminals)) {
-                    result |= addUnique(symbol, nonterminalFirsts);
-                    
-                    break;
-                }
-
-                //check for loop (potentially places symbol in firsts)
-                for (const std::string& first : firsts[symbol]) {
-                    epsilonInSymbolFirsts |= first == EPSILON;
-                    result |= addUnique(first, nonterminalFirsts);
-                }
-
-                if (!epsilonInSymbolFirsts) break;
-            }
-
-            if (epsilonInSymbolFirsts) {
-                result |= addUnique(EPSILON, nonterminalFirsts);
-            }
-
-            return result;
+        if (isElement(symbol, terminals)) {
+            result |= addUnique(symbol, nonterminalFirsts);
+            
+            break;
         }
+
+        //check for loop (potentially places symbol in firsts)
+        for (const std::string& first : firsts[symbol]) {
+            epsilonInSymbolFirsts |= first == EPSILON;
+            result |= addUnique(first, nonterminalFirsts);
+        }
+
+        if (!epsilonInSymbolFirsts) break;
+    }
+
+    if (epsilonInSymbolFirsts) {
+        result |= addUnique(EPSILON, nonterminalFirsts);
+    }
+
+    return result;
+}
 
 void Grammar::initializeFirsts () {
-            bool notDone;
+    bool notDone;
 
-            do{
-                notDone = false;
+    do{
+        notDone = false;
 
-                for (const Rule& rule : rules) {
-                    std::list<std::string> nonterminalFirsts = getOrCreateArray(firsts, rule.nonterminal);
+        for (const Rule& rule : rules) {
+            std::list<std::string> nonterminalFirsts = getOrCreateArray(firsts, rule.nonterminal);
 
-                    if (rule.development.size() == 1 && rule.development.front() == EPSILON) {
-                        notDone |= addUnique(EPSILON, nonterminalFirsts);
-                    } else {
-                        notDone |= collectDevelopmentFirsts(rule.development, nonterminalFirsts);
-                    }
-                }
-            } while (notDone);
+            if (rule.development.size() == 1 && rule.development.front() == EPSILON) {
+                notDone |= addUnique(EPSILON, nonterminalFirsts);
+            } else {
+                notDone |= collectDevelopmentFirsts(rule.development, nonterminalFirsts);
+            }
         }
+    } while (notDone);
+}
 
 void Grammar::initializeFollows() {
-            bool notDone;
+    bool notDone;
 
-            do {
-                notDone = false;
+    do {
+        notDone = false;
 
-                for (const Rule& rule : rules) {
-                    if (rule == rules.front()) {
-                        std::list<std::string> nonterminalFollows = getOrCreateArray(follows, rule.nonterminal);
-                        notDone |= addUnique<std::string>("$", nonterminalFollows);
-                    }
+        for (const Rule& rule : rules) {
+            if (rule == rules.front()) {
+                std::list<std::string> nonterminalFollows = getOrCreateArray(follows, rule.nonterminal);
+                notDone |= addUnique<std::string>("$", nonterminalFollows);
+            }
 
-                    for (const std::string& symbol : rule.development) {
-                        if (isElement(symbol, nonterminals)) {
-                            std::list<std::string> symbolFollows = getOrCreateArray(follows, symbol);
-                            // slice function
-                            std::list<std::string> afterSymbolFirsts;
+            for (int i = 0; i < rule.development.size(); i++) {
+                std::string symbol = getElement(i, rule.development);
 
-                            for (const std::string& first : afterSymbolFirsts) {
-                                if (first == EPSILON) {
-                                    //check again (potentially places symbol in follows)
-                                    std::list<std::string> nonterminalFollows = follows[rule.nonterminal];
+                if (isElement(symbol, nonterminals)) {
+                    std::list<std::string> symbolFollows = getOrCreateArray(follows, symbol);
+                    std::list<std::string> afterSymbolFirsts = getSequenceFirsts(slice(rule.development, i + 1));
 
-                                    for (const std::string& _ : nonterminalFollows) {
-                                        notDone |= addUnique(_, symbolFollows);
-                                    }
-                                } else {
-                                    notDone |= addUnique(first, symbolFollows);
-                                }
+                    for (const std::string& first : afterSymbolFirsts) {
+                        if (first == EPSILON) {
+                            //check again (potentially places symbol in follows)
+                            std::list<std::string> nonterminalFollows = follows[rule.nonterminal];
+
+                            for (const std::string& _ : nonterminalFollows) {
+                                notDone |= addUnique(_, symbolFollows);
                             }
+                        } else {
+                            notDone |= addUnique(first, symbolFollows);
                         }
                     }
                 }
-            } while (notDone);
+            }
         }
+    } while (notDone);
+}
 
 std::list<Rule> Grammar::getRulesForNonterminal(std::string nonterminal) {//string?
-            std::list<Rule> result = {};
+    std::list<Rule> result = {};
 
-            for (const Rule& rule : rules) {
-                if (nonterminal == rule.nonterminal) {
-                    result.push_back(rule);
-                }
+    for (const Rule& rule : rules) {
+        if (nonterminal == rule.nonterminal) {
+            result.push_back(rule);
+        }
+    }
+
+    return result;
+}
+
+class BasicItem {
+    public:
+        Rule& rule;
+        int dotIndex;
+        std::list<std::string> lookAheads = {}; //std::string?
+    
+        BasicItem (Rule& rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {}
+
+        bool addUniqueTo(std::list<BasicItem> items) {
+            return addUnique(this, items);
+        }
+
+        std::list<Item> newItemsFromSymbolAfterDot() {
+            std::list<Item> result = {};            
+            std::list<Rule> nonterminalRules = rule.grammar.getRulesForNonterminal(getElement(dotIndex, rule.development));
+
+            for (const Rule& rule : nonterminalRules) {
+                addUnique(new Item(rule, 0), result);
             }
 
             return result;
         }
 
-/* class BasicItem {
-    public:
-        Rule& rule;
-        int dotIndex; //int?
-        std::list<std::string> lookAheads; //std::string?
-    
-        BasicItem (Rule& rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {}
+        std::optional<Item> newItemAfterShift() {
+            if (dotIndex < rule.development.length && getElement(dotIndex, rule.development) != EPSILON) {
+                return new Item(rule, dotIndex + 1);
+            }
 
-        void addUniqueTo(Object items) {
-            return addUniqueUsingEquals(this, items);
-            // add function
+            return std::nullopt;
+        }
+
+        bool operator==(const BasicItem& that) {
+            return rule == that.rule && dotIndex == that.dotIndex;
         }
 };
 
 class BasicLR1Item : public BasicItem {
-    
+    public:
+        BasicLR1Item(Rule& rule, int dotIndex) : BasicItem(rule, dotIndex) {
+            lookAheads = rule.index == 0 ? {"$"} : {};
+        }
+
+        std::list<Item> newItemsFromSymbolAfterDot() {
+            std::list<Item> result = BasicItem::newItemsFromSymbolAfterDot();
+
+            if (result.size() == 0) return result;
+
+            std::list<std::string> newLookAheads = {};
+            bool epsilonPresent = false;
+            std::list<std::string> firstsAfterSymbolAfterDot = rule.grammar.getSequenceFirsts(slice(rule.development, dotIndex + 1));
+
+            for (const std::string& first : firstsAfterSymbolAfterDot) {
+                if (EPSILON == first) {
+                    epsilonPresent = true;
+                } else {
+                    addUnique(first, newLookAheads);
+                }
+            }
+
+            if (epsilonPresent) {
+                for (const std::string& _ : lookAheads) {
+                    addUnique(_, newLookAheads);
+                }
+            }
+
+            for (const Item& item : result) {
+                item.lookAheads = slice(newLookAheads, 0);
+            }
+
+            return result;
+        }
+
+        std::optional<Item> newItemAfterShift() {
+            std::optional<Item> result = BasicItem::newItemAfterShift();
+
+            if (result != std::nullopt) {
+                result.lookAheads = slice(lookAheads, 0);
+            }
+
+            return result;
+        }
+
+        bool addUniqueTo(std::list<BasicItem> items){
+            bool result = false;
+
+            for (const BasicItem& item : items) {
+                if (BasicItem::operator==(item)) {
+                    for (const std::string& _ : lookAheads) {
+                        result |= addUnique(_, item.lookAheads);
+                    }
+
+                    return result;
+                }
+            }
+
+            items.push_back(this);
+
+            return true;
+        }
+
+        bool operator==(const BasicLR1Item& that) {
+            return BasicItem::operator==(that) && includeEachOther(lookAheads, that.lookAheads);
+        }
 };
 
 class Item : public BasicLR1Item {
@@ -356,4 +445,37 @@ class Item : public BasicLR1Item {
         const std::string grammarType = "LR(1)";
 
         Item (Rule& rule, int dotIndex) : BasicLR1Item(rule, dotIndex) {}
+};
+
+/* class Kernel {
+    public:
+        int index;
+        std::list<auto> items;
+        auto closure;
+        auto gotos; // probably map
+        std::list<auto> keys;
+        //check and change types
+        
+        //maybe initialize with grammar
+        Kernel (int index, std::list<auto> items) : index(index), items(items) {
+            // closure = ...; slice items
+            // gotos = ...;
+            keys = {};
+        }
+}
+
+// add this
+class LRClosureTable {
+    public:
+        Grammar& grammar;
+        std::list<Kernel> kernels;
+
+        LRClosureTable(Grammar& grammar) : grammar(grammar) {
+            kernels = {};
+            kernels.push_back(new Kernel(0, [new Item(grammar.rules[0], 0)]));
+
+            for (const Kernel& kernel : kernels) {
+                updateClosure(kernel);
+            }
+        }
 }; */

@@ -1,6 +1,8 @@
-#include <map>
-#include <list>
 #include <boost/algorithm/string.hpp>
+#include <iterator>
+#include <list>
+#include <map>
+#include <optional>
 #include <string>
 
 template <typename T>
@@ -97,4 +99,39 @@ bool addUnique(T elmnt, std::list<T> list) {
     }
 
     return false;
+}
+
+template <typename T>
+T getElement(int index, std::list<T> list) {
+    auto list_begin = list.begin();    
+    return *std::next(list_begin, index);
+}
+
+template <typename T>
+std::list<T> slice(std::list<T> arr, int start = 0, std::optional<int> end = std::nullopt) {
+    // Check for valid start and end indices
+    if (start < 0) {
+        start += arr.size();
+    }
+
+    int actualEnd = (end == std::nullopt) ? arr.size() : end.value();
+
+    if (actualEnd < 0) {
+        actualEnd += arr.size();
+    }
+
+    if (actualEnd > arr.size()) {
+        actualEnd = arr.size();
+    }
+
+    // Create a new list to store the sliced elements
+    std::list<T> result;
+    auto it = std::next(arr.begin(), start);
+
+    while (it != std::next(arr.begin(), actualEnd)) {
+        result.push_back(*it);
+        ++it;
+    }
+
+    return result;
 }
