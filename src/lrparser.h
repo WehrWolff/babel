@@ -188,7 +188,7 @@ class Rule {
             development = trimElements(splitString(boost::trim_copy(split.back()), " "));
         }
         
-        bool operator==(const Rule& that) {
+        bool operator==(const Rule& that) const {
             if (nonterminal != that.nonterminal) {
 			    return false;
 		    }
@@ -335,36 +335,23 @@ std::list<Rule> Grammar::getRulesForNonterminal(std::string nonterminal) {//stri
     return result;
 }
 
+class Item;
+
 class BasicItem {
     public:
-        Rule& rule;
+        const Rule& rule;
         int dotIndex;
         std::list<std::string> lookAheads = {}; //std::string?
     
-        BasicItem (Rule& rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {}
+        BasicItem (const Rule& rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {}
 
         bool addUniqueTo(std::list<BasicItem> items) {
-            return addUnique(this, items);
+            return addUnique(*this, items);
         }
 
-        std::list<Item> newItemsFromSymbolAfterDot() {
-            std::list<Item> result = {};            
-            std::list<Rule> nonterminalRules = rule.grammar.getRulesForNonterminal(getElement(dotIndex, rule.development));
+        std::list<Item> newItemsFromSymbolAfterDot();
 
-            for (const Rule& rule : nonterminalRules) {
-                addUnique(new Item(rule, 0), result);
-            }
-
-            return result;
-        }
-
-        std::optional<Item> newItemAfterShift() {
-            if (dotIndex < rule.development.length && getElement(dotIndex, rule.development) != EPSILON) {
-                return new Item(rule, dotIndex + 1);
-            }
-
-            return std::nullopt;
-        }
+        std::optional<Item> newItemAfterShift();
 
         bool operator==(const BasicItem& that) {
             return rule == that.rule && dotIndex == that.dotIndex;
@@ -373,49 +360,17 @@ class BasicItem {
 
 class BasicLR1Item : public BasicItem {
     public:
-        BasicLR1Item(Rule& rule, int dotIndex) : BasicItem(rule, dotIndex) {
-            lookAheads = rule.index == 0 ? {"$"} : {};
+        BasicLR1Item(const Rule& rule, int dotIndex) : BasicItem(rule, dotIndex) {
+            if (rule.index == 0) {
+                lookAheads.push_back("$");
+            } else {
+                lookAheads = {};
+            }
         }
 
-        std::list<Item> newItemsFromSymbolAfterDot() {
-            std::list<Item> result = BasicItem::newItemsFromSymbolAfterDot();
+        std::list<Item> newItemsFromSymbolAfterDot();
 
-            if (result.size() == 0) return result;
-
-            std::list<std::string> newLookAheads = {};
-            bool epsilonPresent = false;
-            std::list<std::string> firstsAfterSymbolAfterDot = rule.grammar.getSequenceFirsts(slice(rule.development, dotIndex + 1));
-
-            for (const std::string& first : firstsAfterSymbolAfterDot) {
-                if (EPSILON == first) {
-                    epsilonPresent = true;
-                } else {
-                    addUnique(first, newLookAheads);
-                }
-            }
-
-            if (epsilonPresent) {
-                for (const std::string& _ : lookAheads) {
-                    addUnique(_, newLookAheads);
-                }
-            }
-
-            for (const Item& item : result) {
-                item.lookAheads = slice(newLookAheads, 0);
-            }
-
-            return result;
-        }
-
-        std::optional<Item> newItemAfterShift() {
-            std::optional<Item> result = BasicItem::newItemAfterShift();
-
-            if (result != std::nullopt) {
-                result.lookAheads = slice(lookAheads, 0);
-            }
-
-            return result;
-        }
+        std::optional<Item> newItemAfterShift();
 
         bool addUniqueTo(std::list<BasicItem> items){
             bool result = false;
@@ -430,7 +385,7 @@ class BasicLR1Item : public BasicItem {
                 }
             }
 
-            items.push_back(this);
+            items.push_back(*this);
 
             return true;
         }
@@ -444,8 +399,67 @@ class Item : public BasicLR1Item {
     public:
         const std::string grammarType = "LR(1)";
 
-        Item (Rule& rule, int dotIndex) : BasicLR1Item(rule, dotIndex) {}
+        Item (const Rule& rule, int dotIndex) : BasicLR1Item(rule, dotIndex) {}
 };
+
+std::list<Item> BasicItem::newItemsFromSymbolAfterDot() {
+    std::list<Item> result = {};            
+    std::list<Rule> nonterminalRules = rule.grammar.getRulesForNonterminal(getElement(dotIndex, rule.development));
+
+    for (const Rule& rule : nonterminalRules) {
+        addUnique(Item(rule, 0) , result);
+    }
+
+    return result;
+}
+
+std::optional<Item> BasicItem::newItemAfterShift() {
+    if (dotIndex < rule.development.size() && getElement(dotIndex, rule.development) != EPSILON) {
+        return std::optional<Item>(Item(rule, dotIndex + 1));
+    }
+
+    return std::nullopt;
+}
+
+std::list<Item> BasicLR1Item::newItemsFromSymbolAfterDot() {
+    std::list<Item> result = BasicItem::newItemsFromSymbolAfterDot();
+
+    if (result.size() == 0) return result;
+
+    std::list<std::string> newLookAheads = {};
+    bool epsilonPresent = false;
+    std::list<std::string> firstsAfterSymbolAfterDot = rule.grammar.getSequenceFirsts(slice(rule.development, dotIndex + 1));
+
+    for (const std::string& first : firstsAfterSymbolAfterDot) {
+        if (EPSILON == first) {
+            epsilonPresent = true;
+        } else {
+            addUnique(first, newLookAheads);
+        }
+    }
+
+    if (epsilonPresent) {
+        for (const std::string& _ : lookAheads) {
+            addUnique(_, newLookAheads);
+        }
+    }
+
+    for (Item& item : result) {
+        item.lookAheads = slice(newLookAheads, 0);
+    }
+
+    return result;
+}
+
+std::optional<Item> BasicLR1Item::newItemAfterShift() {
+    std::optional<Item> result = BasicItem::newItemAfterShift();
+
+    if (result != std::nullopt) {
+        result.value().lookAheads = slice(lookAheads, 0);
+    }
+
+    return result;
+}
 
 /* class Kernel {
     public:
