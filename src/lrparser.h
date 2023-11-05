@@ -86,7 +86,6 @@ class Grammar {
         std::map<std::string, std::list<std::string>> firsts;
         std::map<std::string, std::list<std::string>> follows;
         std::string axiom;
-        //check all types
 
         Grammar(std::string text) {
             initializeRulesAndAlphabetAndNonterminals();
@@ -110,13 +109,12 @@ class Grammar {
                     break;
                 }
                 
-                //check for loop (potentially places symbol in firsts)
-                for (const std::string& first : firsts[symbol]) {
+                for (const std::string& first : firsts.at(symbol)) {
                     epsilonInSymbolFirsts |= first == EPSILON;
                     addUnique(first, result);
                 }
-                // check line below again
-                epsilonInSymbolFirsts |= firsts[symbol].size() == 0;
+                
+                epsilonInSymbolFirsts |= firsts.at(symbol).size() == 0;
 
                 if (!epsilonInSymbolFirsts) break;                
             }
@@ -212,7 +210,6 @@ void Grammar::initializeRulesAndAlphabetAndNonterminals () {
         std::string line = boost::trim_copy(_);
 
         if (line != "") {
-            // illegal as it isnt fully defined yet
             // should use unique_pointr here later
             Rule rule(*this, line);
 
@@ -252,8 +249,7 @@ bool Grammar::collectDevelopmentFirsts(std::list<std::string> development, std::
             break;
         }
 
-        //check for loop (potentially places symbol in firsts)
-        for (const std::string& first : firsts[symbol]) {
+        for (const std::string& first : firsts.at(symbol)) {
             epsilonInSymbolFirsts |= first == EPSILON;
             result |= addUnique(first, nonterminalFirsts);
         }
@@ -307,8 +303,7 @@ void Grammar::initializeFollows() {
 
                     for (const std::string& first : afterSymbolFirsts) {
                         if (first == EPSILON) {
-                            //check again (potentially places symbol in follows)
-                            std::list<std::string> nonterminalFollows = follows[rule.nonterminal];
+                            std::list<std::string> nonterminalFollows = follows.at(rule.nonterminal);
 
                             for (const std::string& _ : nonterminalFollows) {
                                 notDone |= addUnique(_, symbolFollows);
@@ -323,7 +318,7 @@ void Grammar::initializeFollows() {
     } while (notDone);
 }
 
-std::list<Rule> Grammar::getRulesForNonterminal(std::string nonterminal) {//string?
+std::list<Rule> Grammar::getRulesForNonterminal(std::string nonterminal) {
     std::list<Rule> result = {};
 
     for (const Rule& rule : rules) {
@@ -341,7 +336,7 @@ class BasicItem {
     public:
         const Rule& rule;
         int dotIndex;
-        std::list<std::string> lookAheads = {}; //std::string?
+        std::list<std::string> lookAheads = {};
     
         BasicItem (const Rule& rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {}
 
@@ -470,9 +465,8 @@ class Kernel {
         int index;
         std::list<Item> items;
         std::list<Item> closure;
-        std::map<std::string, int> gotos; // probably map
+        std::map<std::string, int> gotos;
         std::list<std::string> keys;
-        //check and change types
         
         //maybe initialize with grammar
         Kernel (int index, std::list<Item> items) : index(index), items(items) {
@@ -486,14 +480,12 @@ class Kernel {
         }
 };
 
-// add this
 class LRClosureTable {
     public:
         Grammar& grammar;
         std::list<Kernel> kernels;
 
         LRClosureTable(Grammar& grammar) : grammar(grammar) {
-            kernels = {};
             kernels.push_back(Kernel(0, {Item(grammar.rules.front(), 0)}));
 
             for (int i = 0; i < kernels.size();) {
