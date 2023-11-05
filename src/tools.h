@@ -91,6 +91,17 @@ bool isElement(T elmnt, std::list<T> list) {
 }
 
 template <typename T>
+int indexOf(T element, std::list<T> list) {
+    for (int i = 0; i < list.size(); i++) {
+        if (element == getElement(i, list)) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+template <typename T>
 bool addUnique(T elmnt, std::list<T> list) {
     if (!isElement(elmnt, list)) {
         list.push_back(elmnt);

@@ -345,7 +345,7 @@ class BasicItem {
     
         BasicItem (const Rule& rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {}
 
-        bool addUniqueTo(std::list<BasicItem> items) {
+        bool addUniqueTo(std::list<BasicItem> items) const {
             return addUnique(*this, items);
         }
 
@@ -353,7 +353,7 @@ class BasicItem {
 
         std::optional<Item> newItemAfterShift();
 
-        bool operator==(const BasicItem& that) {
+        bool operator==(const BasicItem& that) const {
             return rule == that.rule && dotIndex == that.dotIndex;
         }
 };
@@ -372,7 +372,7 @@ class BasicLR1Item : public BasicItem {
 
         std::optional<Item> newItemAfterShift();
 
-        bool addUniqueTo(std::list<BasicItem> items){
+        bool addUniqueTo(std::list<BasicItem> items) const {
             bool result = false;
 
             for (const BasicItem& item : items) {
@@ -400,6 +400,10 @@ class Item : public BasicLR1Item {
         const std::string grammarType = "LR(1)";
 
         Item (const Rule& rule, int dotIndex) : BasicLR1Item(rule, dotIndex) {}
+        
+        bool addUniqueTo(std::list<Item> items) const {
+            return addUnique(*this, items);
+        }
 };
 
 std::list<Item> BasicItem::newItemsFromSymbolAfterDot() {
@@ -461,22 +465,26 @@ std::optional<Item> BasicLR1Item::newItemAfterShift() {
     return result;
 }
 
-/* class Kernel {
+class Kernel {
     public:
         int index;
-        std::list<auto> items;
-        auto closure;
-        auto gotos; // probably map
-        std::list<auto> keys;
+        std::list<Item> items;
+        std::list<Item> closure;
+        std::map<std::string, int> gotos; // probably map
+        std::list<std::string> keys;
         //check and change types
         
         //maybe initialize with grammar
-        Kernel (int index, std::list<auto> items) : index(index), items(items) {
-            // closure = ...; slice items
-            // gotos = ...;
+        Kernel (int index, std::list<Item> items) : index(index), items(items) {
+            closure = slice(items, 0);
+            gotos = {};
             keys = {};
         }
-}
+
+        bool operator==(const Kernel& that) {
+            return includeEachOther(items, that.items);
+        }
+};
 
 // add this
 class LRClosureTable {
@@ -486,10 +494,62 @@ class LRClosureTable {
 
         LRClosureTable(Grammar& grammar) : grammar(grammar) {
             kernels = {};
-            kernels.push_back(new Kernel(0, [new Item(grammar.rules[0], 0)]));
+            kernels.push_back(Kernel(0, {Item(grammar.rules.front(), 0)}));
 
-            for (const Kernel& kernel : kernels) {
+            for (int i = 0; i < kernels.size();) {
+                Kernel kernel = getElement(i, kernels);
+                
                 updateClosure(kernel);
+
+                if (addGotos(kernel, kernels)) {
+                    i = 0;
+                } else {
+                    ++i;
+                }
             }
         }
-}; */
+
+        void updateClosure(Kernel kernel) {
+            for (Item& _ : kernel.closure) {
+                std::list<Item> newItemsFromSymbolAfterDot = _.newItemsFromSymbolAfterDot();
+
+                for (const Item& item : newItemsFromSymbolAfterDot) {
+                    item.addUniqueTo(kernel.closure);
+                }
+            }
+        }
+
+        bool addGotos(Kernel kernel, std::list<Kernel> kernels) {
+            bool lookAheadsPropagated = false;
+            std::map<std::string, std::list<Item>> newKernels;
+
+            for (Item& item : kernel.closure) {
+                std::optional<Item> newItem = item.newItemAfterShift();
+
+                if (newItem != std::nullopt) {
+                    std::string symbolAfterDot = getElement(item.dotIndex, item.rule.development);
+
+                    addUnique(symbolAfterDot, kernel.keys);
+                    newItem.value().addUniqueTo(getOrCreateArray(newKernels, symbolAfterDot));
+                }
+            }
+
+            for (const std::string& key : kernel.keys) {
+                Kernel newKernel(kernels.size(), newKernels.at(key));
+                int targetKernelIndex = indexOf(newKernel, kernels);
+                
+                if (targetKernelIndex < 0) {
+                    kernels.push_back(newKernel);
+                    targetKernelIndex = newKernel.index;
+                } else {
+                    for (const Item& item : newKernel.items) {
+                        lookAheadsPropagated |= item.addUniqueTo(getElement(targetKernelIndex, kernels).items);
+                    }
+                }
+
+                kernel.gotos.at(key) = targetKernelIndex;
+            }
+
+            return lookAheadsPropagated;
+        }
+};
