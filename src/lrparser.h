@@ -545,3 +545,57 @@ class LRClosureTable {
             return lookAheadsPropagated;
         }
 };
+
+class LRAction {
+    public:
+        std::string actionType; // could be optimized to char
+        int actionValue;
+
+        LRAction(std::string actionType, int actionValue) : actionType(actionType), actionValue(actionValue) {}
+};
+
+class State {
+    public:
+        int index;
+        std::map<std::string, std::list<LRAction>> mapping;
+
+        State(std::list<State> states) : index(states.size()) {}
+};
+
+class LRTable {
+    public:
+        Grammar& grammar;
+        std::list<State> states = {};
+
+        LRTable(LRClosureTable& closureTable) : grammar(closureTable.grammar) {
+            for (const Kernel& kernel : closureTable.kernels) {
+                State state(states);
+
+                for (const std::string& key : kernel.keys) {
+                    int nextStateIndex = kernel.gotos.at(key);
+
+                    state.mapping[key].push_back(LRAction((isElement(key, grammar.terminals) ? "s" : ""), nextStateIndex));
+                }
+
+                for (const Item& item : kernel.closure) {
+                    if (item.dotIndex == item.rule.development.size() || item.rule.development.front() == EPSILON) {
+                        for (const std::string& lookAhead : item.lookAheads) {
+                            state.mapping[lookAhead].push_back(LRAction("r", item.rule.index));
+                        }
+                    }
+                }
+                
+                states.push_back(state);
+            }
+        }
+};
+
+std::optional<LRAction> chooseActionElement(State& state, std::string token) {
+    if (state.mapping.find(token) == state.mapping.end()) {
+        return std::nullopt;
+    }
+
+    std::list<LRAction> action = state.mapping.at(token);
+
+    return action.front();
+}
