@@ -54,7 +54,8 @@ bool includeEachOtherUsingEquals(std::list<T> list1, std::list<T> list2) {
 } */
 
 // leave for clarity, replace later
-std::list<std::string> getOrCreateArray(std::map<std::string, std::list<std::string>> dict, std::string key) {
+template <typename T>
+std::list<T> getOrCreateArray(std::map<std::string, std::list<T>> dict, std::string key) {
     return dict[key];
 }
 
@@ -86,7 +87,7 @@ std::list<std::string> splitString(const std::string& input, const std::string& 
 
 // leave for clarity, potentially replace later
 template <typename T>
-bool isElement(T elmnt, std::list<T> list) {
+bool isElement(T elmnt, std::list<T>& list) {
     return std::find(list.begin(), list.end(), elmnt) != list.end();
 }
 

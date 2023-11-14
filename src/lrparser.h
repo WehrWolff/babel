@@ -552,6 +552,10 @@ class LRAction {
         int actionValue;
 
         LRAction(std::string actionType, int actionValue) : actionType(actionType), actionValue(actionValue) {}
+
+        std::string toString() {
+            return actionType + std::to_string(actionValue);
+        }
 };
 
 class State {
@@ -599,3 +603,47 @@ std::optional<LRAction> chooseActionElement(State& state, std::string token) {
 
     return action.front();
 }
+
+class Parser {
+    public:
+        LRTable& parseTable;
+
+        Parser(LRTable& parseTable) : parseTable(parseTable) {}
+
+        void parse(std::list<Token> tokens) {
+            std::list<std::variant<int, BaseAST>> stack = {0};
+            tokens.push_back(Token("$", "$"));
+            int tokenIndex = 0;
+            std::string token = getElement(tokenIndex, tokens).getType();
+            State state = getElement(stateIndex(stack), parseTable.states);            
+            LRAction action = state.mapping.at(token);
+            std::optional<LRAction> actionElement = chooseActionElement(state, token);
+
+            while (action != std::nullopt && actionElement.toString() != "r0") {
+                if (actionElement.value().actionType == "s") {
+                    stack.push_back(getElement(++tokenIndex, tokens));
+                    stack.push_back(actionElement.value().actionValue);
+                } else if (actionElement.value().actionType == "r") {
+                    int ruleIndex = actionElement.value().actionValue;
+                    Rule rule = getElement(ruleIndex, parseTable.grammar.rules);
+                    int removeCount = isElement(EPSILON, rule.development) ? 0 : rule.development.size() * 2;
+                    auto begin = stack.begin();
+                    std::advance(begin, stack.size() - removeCount);
+                    stack.erase(begin, stack.end());
+
+                    //trigger function, push elmnt
+                } else {
+                    stack.push_back(actionElement.value().actionValue);
+                }
+
+                state = getElement(stateIndex(stack), parseTable.states);
+                token = stack.size() % 2 == 0 ? (std::get<Token>getElement(stack.size() - 1, stack)).getType() : getElement(tokenIndex, tokens).getType();
+                action = state.mapping.at(token);
+                actionElement = chooseActionElement(state, token);
+            }
+        }
+
+        int stateIndex(std::list<std::variant<int, BaseAST>> stack) {
+            return std::get<int>(getElement(2 * ((stack.size() - 1) >> 1), stack));
+        }
+};
