@@ -55,7 +55,7 @@ bool includeEachOtherUsingEquals(std::list<T> list1, std::list<T> list2) {
 
 // leave for clarity, replace later
 template <typename T>
-std::list<T> getOrCreateArray(std::map<std::string, std::list<T>> dict, std::string key) {
+std::list<T> getOrCreateArray(std::map<std::string, std::list<T>>& dict, std::string key) {
     return dict[key];
 }
 
@@ -103,9 +103,21 @@ int indexOf(T element, std::list<T> list) {
 }
 
 template <typename T>
-bool addUnique(T elmnt, std::list<T> list) {
+bool addUnique(T elmnt, std::list<T>& list) {
     if (!isElement(elmnt, list)) {
         list.push_back(elmnt);
+
+        return true;
+    }
+
+    return false;
+}
+
+
+template <typename T>
+bool emplaceUnique(T elmnt, std::list<T>& list) {
+    if (!isElement(elmnt, list)) {
+        list.emplace_back(elmnt);
 
         return true;
     }
