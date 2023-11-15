@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <boost/algorithm/string.hpp>
+#include <cassert>
 #include <list>
 #include <map>
 #include <optional>
@@ -8,6 +9,36 @@
 #include <string>
 #include <variant>
 #include "tools.h"
+
+template<typename T>
+ostream& operator<<(ostream& os, const std::list<T>& myList) {
+    os << "{";
+    if (!myList.empty()) {
+        auto it = myList.begin();
+        os << *it;
+        ++it;
+        for (; it != myList.end(); ++it) {
+            os << ", " << *it;
+        }
+    }
+    os << "}";
+    return os;
+}
+
+template<typename K, typename V>
+ostream& operator<<(ostream& os, const std::map<K, V>& myMap) {
+    os << "{";
+    if (!myMap.empty()) {
+        auto it = myMap.begin();
+        os << it->first << ": " << it->second;
+        ++it;
+        for (; it != myMap.end(); ++it) {
+            os << ", " << it->first << ": " << it->second;
+        }
+    }
+    os << "}";
+    return os;
+}
 
 class SyntaxError : public std::exception {
 private:
@@ -67,11 +98,11 @@ class Rule;
 
 class Grammar {
     private:
-        void initializeRulesAndAlphabetAndNonterminals ();
+        void initializeRulesAndAlphabetAndNonterminals (std::string text);
 
         void initializeAlphabetAndTerminals ();
 
-        bool collectDevelopmentFirsts(std::list<std::string> development, std::list<std::string> nonterminalFirsts);
+        bool collectDevelopmentFirsts(std::list<std::string>& development, std::list<std::string>& nonterminalFirsts);
 
         void initializeFirsts ();
 
@@ -87,8 +118,8 @@ class Grammar {
         std::map<std::string, std::list<std::string>> follows;
         std::string axiom;
 
-        Grammar(std::string text) {
-            initializeRulesAndAlphabetAndNonterminals();
+        Grammar(std::string text) : axiom("") {
+            initializeRulesAndAlphabetAndNonterminals(text);
             initializeAlphabetAndTerminals();
             initializeFirsts();
             initializeFollows();
@@ -96,7 +127,7 @@ class Grammar {
 
         std::list<Rule> getRulesForNonterminal(std::string nonterminal);
 
-        std::list<std::string> getSequenceFirsts(std::list<std::string> sequence) {
+        std::list<std::string> getSequenceFirsts(std::list<std::string> sequence) const {
             std::list<std::string> result = {};
             bool epsilonInSymbolFirsts = true;
 
@@ -203,7 +234,7 @@ class Rule {
         }
 };
 
-void Grammar::initializeRulesAndAlphabetAndNonterminals () {
+void Grammar::initializeRulesAndAlphabetAndNonterminals (std::string text) {
     std::list<std::string> lines = splitString(text, "\n");
 
     for (const std::string& _ : lines) {
@@ -212,10 +243,9 @@ void Grammar::initializeRulesAndAlphabetAndNonterminals () {
         if (line != "") {
             // should use unique_pointr here later
             Rule rule(*this, line);
-
             rules.push_back(rule);
 
-            if (axiom == "") {
+            if (axiom.empty()) {
                 axiom = rule.nonterminal;
             }
             
@@ -236,10 +266,10 @@ void Grammar::initializeAlphabetAndTerminals () {
     }
 }
 
-bool Grammar::collectDevelopmentFirsts(std::list<std::string> development, std::list<std::string> nonterminalFirsts) {
+bool Grammar::collectDevelopmentFirsts(std::list<std::string>& development, std::list<std::string>& nonterminalFirsts) {
     bool result = false;
     bool epsilonInSymbolFirsts = true;
-
+    
     for (const std::string& symbol : development) {
         epsilonInSymbolFirsts = false;
 
@@ -249,9 +279,11 @@ bool Grammar::collectDevelopmentFirsts(std::list<std::string> development, std::
             break;
         }
 
-        for (const std::string& first : firsts.at(symbol)) {
-            epsilonInSymbolFirsts |= first == EPSILON;
-            result |= addUnique(first, nonterminalFirsts);
+        if (firsts.find(symbol) != firsts.end()) {
+            for (const std::string& first : firsts.at(symbol)) {
+                epsilonInSymbolFirsts |= first == EPSILON;
+                result |= addUnique(first, nonterminalFirsts);
+            }
         }
 
         if (!epsilonInSymbolFirsts) break;
@@ -270,7 +302,7 @@ void Grammar::initializeFirsts () {
     do{
         notDone = false;
 
-        for (const Rule& rule : rules) {
+        for (Rule& rule : rules) {
             std::list<std::string> nonterminalFirsts = getOrCreateArray(firsts, rule.nonterminal);
 
             if (rule.development.size() == 1 && rule.development.front() == EPSILON) {
@@ -278,6 +310,7 @@ void Grammar::initializeFirsts () {
             } else {
                 notDone |= collectDevelopmentFirsts(rule.development, nonterminalFirsts);
             }
+            firsts[rule.nonterminal] = nonterminalFirsts;
         }
     } while (notDone);
 }
@@ -287,11 +320,12 @@ void Grammar::initializeFollows() {
 
     do {
         notDone = false;
-
-        for (const Rule& rule : rules) {
+        
+        for (Rule& rule : rules) {
             if (rule == rules.front()) {
                 std::list<std::string> nonterminalFollows = getOrCreateArray(follows, rule.nonterminal);
                 notDone |= addUnique<std::string>("$", nonterminalFollows);
+                follows[rule.nonterminal] = nonterminalFollows;
             }
 
             for (int i = 0; i < rule.development.size(); i++) {
@@ -299,7 +333,13 @@ void Grammar::initializeFollows() {
 
                 if (isElement(symbol, nonterminals)) {
                     std::list<std::string> symbolFollows = getOrCreateArray(follows, symbol);
-                    std::list<std::string> afterSymbolFirsts = getSequenceFirsts(slice(rule.development, i + 1));
+                    
+                    std::list<std::string> sliced = rule.development;
+                    auto end = sliced.begin();
+                    std::advance(end, i + 1);
+                    sliced.erase(sliced.begin(), end);
+                    
+                    std::list<std::string> afterSymbolFirsts = getSequenceFirsts(sliced);
 
                     for (const std::string& first : afterSymbolFirsts) {
                         if (first == EPSILON) {
@@ -312,6 +352,7 @@ void Grammar::initializeFollows() {
                             notDone |= addUnique(first, symbolFollows);
                         }
                     }
+                    follows[symbol] = symbolFollows;
                 }
             }
         }
@@ -370,7 +411,7 @@ class BasicLR1Item : public BasicItem {
         bool addUniqueTo(std::list<BasicItem> items) const {
             bool result = false;
 
-            for (const BasicItem& item : items) {
+            for (BasicItem& item : items) {
                 if (BasicItem::operator==(item)) {
                     for (const std::string& _ : lookAheads) {
                         result |= addUnique(_, item.lookAheads);
@@ -402,7 +443,7 @@ class Item : public BasicLR1Item {
 };
 
 std::list<Item> BasicItem::newItemsFromSymbolAfterDot() {
-    std::list<Item> result = {};            
+    std::list<Item> result = {};
     std::list<Rule> nonterminalRules = rule.grammar.getRulesForNonterminal(getElement(dotIndex, rule.development));
 
     for (const Rule& rule : nonterminalRules) {
@@ -446,7 +487,7 @@ std::list<Item> BasicLR1Item::newItemsFromSymbolAfterDot() {
     for (Item& item : result) {
         item.lookAheads = slice(newLookAheads, 0);
     }
-
+    
     return result;
 }
 
@@ -490,7 +531,7 @@ class LRClosureTable {
 
             for (int i = 0; i < kernels.size();) {
                 Kernel kernel = getElement(i, kernels);
-                
+            
                 updateClosure(kernel);
 
                 if (addGotos(kernel, kernels)) {
@@ -501,31 +542,35 @@ class LRClosureTable {
             }
         }
 
-        void updateClosure(Kernel kernel) {
-            for (Item& _ : kernel.closure) {
-                std::list<Item> newItemsFromSymbolAfterDot = _.newItemsFromSymbolAfterDot();
-
+        void updateClosure(Kernel& kernel) {
+            cout << "closurePrev: " << kernel.closure.size() << endl;
+            for (int i = 0; i < kernel.closure.size(); i++) {
+                std::list<Item> newItemsFromSymbolAfterDot = getElement(i, kernel.closure).newItemsFromSymbolAfterDot();
+                
                 for (const Item& item : newItemsFromSymbolAfterDot) {
-                    item.addUniqueTo(kernel.closure);
+                    
+                    cout << kernel.closure.size() << endl;
+                    //item.addUniqueTo(kernel.closure);
+                    emplaceUnique(item, kernel.closure);
                 }
             }
         }
 
-        bool addGotos(Kernel kernel, std::list<Kernel> kernels) {
+        bool addGotos(Kernel& kernel, std::list<Kernel>& kernels) {
             bool lookAheadsPropagated = false;
             std::map<std::string, std::list<Item>> newKernels;
-
+            //cout << "closureLength: " << kernel.closure.size() << endl;
             for (Item& item : kernel.closure) {
                 std::optional<Item> newItem = item.newItemAfterShift();
 
                 if (newItem != std::nullopt) {
                     std::string symbolAfterDot = getElement(item.dotIndex, item.rule.development);
 
-                    addUnique(symbolAfterDot, kernel.keys);
+                    emplaceUnique(symbolAfterDot, kernel.keys);
                     newItem.value().addUniqueTo(getOrCreateArray(newKernels, symbolAfterDot));
                 }
             }
-
+            //cout << "keyNum: " << kernel.keys << endl;
             for (const std::string& key : kernel.keys) {
                 Kernel newKernel(kernels.size(), newKernels.at(key));
                 int targetKernelIndex = indexOf(newKernel, kernels);
@@ -539,7 +584,7 @@ class LRClosureTable {
                     }
                 }
 
-                kernel.gotos.at(key) = targetKernelIndex;
+                if (kernel.gotos.find(key) != kernel.gotos.end()) kernel.gotos.at(key) = targetKernelIndex;
             }
 
             return lookAheadsPropagated;
@@ -604,46 +649,23 @@ std::optional<LRAction> chooseActionElement(State& state, std::string token) {
     return action.front();
 }
 
-class Parser {
-    public:
-        LRTable& parseTable;
 
-        Parser(LRTable& parseTable) : parseTable(parseTable) {}
+int main()
+{
+    Grammar grammar("A' -> A\nA -> a A\nA -> a");
+    LRClosureTable lrClosureTable(grammar);
+    assert("A'" == grammar.axiom);
+    assert(3 == grammar.rules.size());
+    std::list<std::string> a = {"a"};
+	assert(a == grammar.firsts.at("A"));
+	assert(Item(Rule(grammar, "A -> a A"), 1) == Item(Rule(grammar, "A -> a A"), 1));
+	assert(0 == indexOf(Item(Rule(grammar, "A -> a A"), 1), {Item(Rule(grammar, "A -> a A"), 1)}));
+	
+	cout << "actual: " << lrClosureTable.kernels.front().closure.size() << endl;
+	cout << "actual: " << lrClosureTable.kernels.size() << endl;
+	assert(3 == lrClosureTable.kernels.front().closure.size());
+	assert(4 == lrClosureTable.kernels.size());
+    cout<<"Hello World";
 
-        void parse(std::list<Token> tokens) {
-            std::list<std::variant<int, BaseAST>> stack = {0};
-            tokens.push_back(Token("$", "$"));
-            int tokenIndex = 0;
-            std::string token = getElement(tokenIndex, tokens).getType();
-            State state = getElement(stateIndex(stack), parseTable.states);            
-            LRAction action = state.mapping.at(token);
-            std::optional<LRAction> actionElement = chooseActionElement(state, token);
-
-            while (action != std::nullopt && actionElement.toString() != "r0") {
-                if (actionElement.value().actionType == "s") {
-                    stack.push_back(getElement(++tokenIndex, tokens));
-                    stack.push_back(actionElement.value().actionValue);
-                } else if (actionElement.value().actionType == "r") {
-                    int ruleIndex = actionElement.value().actionValue;
-                    Rule rule = getElement(ruleIndex, parseTable.grammar.rules);
-                    int removeCount = isElement(EPSILON, rule.development) ? 0 : rule.development.size() * 2;
-                    auto begin = stack.begin();
-                    std::advance(begin, stack.size() - removeCount);
-                    stack.erase(begin, stack.end());
-
-                    //trigger function, push elmnt
-                } else {
-                    stack.push_back(actionElement.value().actionValue);
-                }
-
-                state = getElement(stateIndex(stack), parseTable.states);
-                token = stack.size() % 2 == 0 ? (std::get<Token>getElement(stack.size() - 1, stack)).getType() : getElement(tokenIndex, tokens).getType();
-                action = state.mapping.at(token);
-                actionElement = chooseActionElement(state, token);
-            }
-        }
-
-        int stateIndex(std::list<std::variant<int, BaseAST>> stack) {
-            return std::get<int>(getElement(2 * ((stack.size() - 1) >> 1), stack));
-        }
-};
+    return 0;
+}
