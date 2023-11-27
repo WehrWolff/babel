@@ -232,6 +232,19 @@ class Rule {
 		
 		    return true;
         }
+        
+        friend ostream& operator<<(ostream& os, const Rule& rule) {
+            os << rule.nonterminal << " -> ";
+            if (!rule.development.empty()) {
+                auto it = rule.development.begin();
+                os << *it;
+                ++it;
+                for (; it != rule.development.end(); ++it) {
+                    os << " " << *it;
+                }
+            }
+            return os;
+        }
 };
 
 void Grammar::initializeRulesAndAlphabetAndNonterminals (std::string text) {
@@ -437,14 +450,34 @@ class Item : public BasicLR1Item {
 
         Item (const Rule& rule, int dotIndex) : BasicLR1Item(rule, dotIndex) {}
         
-        bool addUniqueTo(std::list<Item> items) const {
-            return addUnique(*this, items);
+        bool addUniqueTo(std::list<Item>& items) const {
+            //return addUnique(*this, items);
+            bool result = false;
+
+            for (BasicItem& item : items) {
+                if (BasicItem::operator==(item)) {
+                    for (const std::string& _ : lookAheads) {
+                        result |= addUnique(_, item.lookAheads);
+                    }
+
+                    return result;
+                }
+            }
+
+            items.push_back(*this);
+
+            return true;
+        }
+        
+        bool operator==(const Item& that) {
+            return rule == that.rule && dotIndex == that.dotIndex && includeEachOther(lookAheads, that.lookAheads);
         }
 };
 
 std::list<Item> BasicItem::newItemsFromSymbolAfterDot() {
     std::list<Item> result = {};
-    std::list<Rule> nonterminalRules = rule.grammar.getRulesForNonterminal(getElement(dotIndex, rule.development));
+    std::string ntR = getElement(dotIndex, rule.development);
+    std::list<Rule> nonterminalRules = rule.grammar.getRulesForNonterminal(ntR);
 
     for (const Rule& rule : nonterminalRules) {
         addUnique(Item(rule, 0) , result);
@@ -530,8 +563,8 @@ class LRClosureTable {
             kernels.push_back(Kernel(0, {Item(grammar.rules.front(), 0)}));
 
             for (int i = 0; i < kernels.size();) {
-                Kernel kernel = getElement(i, kernels);
-            
+                Kernel& kernel = getUpdateableElement(i, kernels);
+
                 updateClosure(kernel);
 
                 if (addGotos(kernel, kernels)) {
@@ -543,34 +576,36 @@ class LRClosureTable {
         }
 
         void updateClosure(Kernel& kernel) {
-            cout << "closurePrev: " << kernel.closure.size() << endl;
-            for (int i = 0; i < kernel.closure.size(); i++) {
-                std::list<Item> newItemsFromSymbolAfterDot = getElement(i, kernel.closure).newItemsFromSymbolAfterDot();
-                
+            for (Item& closure : kernel.closure) {
+            //for (size_t i = 0; i < kernel.closure.size(); i++) {
+                //cout << "newItemsFromSymbolAfterDot" << endl;
+                std::list<Item> newItemsFromSymbolAfterDot = closure.newItemsFromSymbolAfterDot();
+                //std::list<Item> newItemsFromSymbolAfterDot = getElement(i, kernel.closure).newItemsFromSymbolAfterDot();
                 for (const Item& item : newItemsFromSymbolAfterDot) {
                     
-                    cout << kernel.closure.size() << endl;
-                    //item.addUniqueTo(kernel.closure);
-                    emplaceUnique(item, kernel.closure);
-                }
+                    //cout << kernel.closure.size() << endl;
+                    item.addUniqueTo(kernel.closure);
+                }    
             }
         }
 
         bool addGotos(Kernel& kernel, std::list<Kernel>& kernels) {
             bool lookAheadsPropagated = false;
             std::map<std::string, std::list<Item>> newKernels;
-            //cout << "closureLength: " << kernel.closure.size() << endl;
+            
             for (Item& item : kernel.closure) {
                 std::optional<Item> newItem = item.newItemAfterShift();
 
                 if (newItem != std::nullopt) {
                     std::string symbolAfterDot = getElement(item.dotIndex, item.rule.development);
 
-                    emplaceUnique(symbolAfterDot, kernel.keys);
-                    newItem.value().addUniqueTo(getOrCreateArray(newKernels, symbolAfterDot));
+                    addUnique(symbolAfterDot, kernel.keys);
+                    getOrCreateArray(newKernels, symbolAfterDot);
+                    std::list<Item>& newItems = newKernels.at(symbolAfterDot);
+                    newItem.value().addUniqueTo(newItems);
                 }
             }
-            //cout << "keyNum: " << kernel.keys << endl;
+            
             for (const std::string& key : kernel.keys) {
                 Kernel newKernel(kernels.size(), newKernels.at(key));
                 int targetKernelIndex = indexOf(newKernel, kernels);
@@ -580,13 +615,14 @@ class LRClosureTable {
                     targetKernelIndex = newKernel.index;
                 } else {
                     for (const Item& item : newKernel.items) {
-                        lookAheadsPropagated |= item.addUniqueTo(getElement(targetKernelIndex, kernels).items);
+                        std::list<Item>& items = getUpdateableElement(targetKernelIndex, kernels).items;
+                        lookAheadsPropagated |= item.addUniqueTo(items);
                     }
                 }
 
                 if (kernel.gotos.find(key) != kernel.gotos.end()) kernel.gotos.at(key) = targetKernelIndex;
             }
-
+            
             return lookAheadsPropagated;
         }
 };
@@ -661,11 +697,11 @@ int main()
 	assert(Item(Rule(grammar, "A -> a A"), 1) == Item(Rule(grammar, "A -> a A"), 1));
 	assert(0 == indexOf(Item(Rule(grammar, "A -> a A"), 1), {Item(Rule(grammar, "A -> a A"), 1)}));
 	
-	cout << "actual: " << lrClosureTable.kernels.front().closure.size() << endl;
-	cout << "actual: " << lrClosureTable.kernels.size() << endl;
+	//cout << "actual: " << lrClosureTable.kernels.front().closure.size() << endl;
+	//cout << "actual: " << lrClosureTable.kernels.size() << endl;
 	assert(3 == lrClosureTable.kernels.front().closure.size());
 	assert(4 == lrClosureTable.kernels.size());
-    cout<<"Hello World";
+    //cout << "Hello World";
 
     return 0;
 }
