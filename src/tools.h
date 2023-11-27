@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <iterator>
 #include <list>
@@ -22,9 +23,27 @@ typename std::list<T>::iterator findIndex(std::list<T>& myList, const T& value) 
 }
 
 template <typename T>
+T getElement(int index, const std::list<T>& list) {
+    auto list_begin = list.begin();
+    return *std::next(list_begin, index);
+}
+
+template <typename T>
+int indexOf(T element, const std::list<T>& list) {
+    for (int i = 0; i < list.size(); i++) {
+        if (element == getElement(i, list)) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+template <typename T>
 bool includes(std::list<T> list1, std::list<T> list2) {
     for (const auto& elmnt : list1) {
-        if (findIndex(list2, elmnt) == list2.end()){
+        //if (findIndex(list2, elmnt) == list2.end()){
+        if (indexOf(elmnt, list2) < 0){
             return false;
         }
     }
@@ -92,17 +111,6 @@ bool isElement(T elmnt, std::list<T>& list) {
 }
 
 template <typename T>
-int indexOf(T element, std::list<T> list) {
-    for (int i = 0; i < list.size(); i++) {
-        if (element == getElement(i, list)) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-template <typename T>
 bool addUnique(T elmnt, std::list<T>& list) {
     if (!isElement(elmnt, list)) {
         list.push_back(elmnt);
@@ -114,20 +122,20 @@ bool addUnique(T elmnt, std::list<T>& list) {
 }
 
 
-template <typename T>
+/* template <typename T>
 bool emplaceUnique(T elmnt, std::list<T>& list) {
-    if (!isElement(elmnt, list)) {
-        list.emplace_back(elmnt);
+    //if (!isElement(elmnt, list)) {
+        list.push_back(elmnt);
 
         return true;
-    }
+    //}
 
     return false;
-}
+}*/
 
 template <typename T>
-T getElement(int index, std::list<T> list) {
-    auto list_begin = list.begin();    
+T& getUpdateableElement(int index, std::list<T>& list) {
+    auto list_begin = list.begin();
     return *std::next(list_begin, index);
 }
 
