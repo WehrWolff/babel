@@ -102,7 +102,7 @@ class Grammar {
 
         void initializeAlphabetAndTerminals ();
 
-        bool collectDevelopmentFirsts(std::list<std::string>& development, std::list<std::string>& nonterminalFirsts);
+        bool collectDevelopmentFirsts(std::list<std::string> const& development, std::list<std::string>& nonterminalFirsts);
 
         void initializeFirsts ();
 
@@ -118,7 +118,7 @@ class Grammar {
         std::map<std::string, std::list<std::string>> follows;
         std::string axiom;
 
-        Grammar(std::string text) : axiom("") {
+        explicit Grammar(std::string const& text) : axiom("") {
             initializeRulesAndAlphabetAndNonterminals(text);
             initializeAlphabetAndTerminals();
             initializeFirsts();
@@ -210,7 +210,7 @@ class Rule {
         std::list<std::string> pattern;
         std::list<std::string> development;        
         
-        Rule(Grammar& grammar, const std::string& text) : grammar(grammar), index(grammar.rules.size()) {
+        Rule(Grammar& grammar, const std::string& text) : grammar(grammar), index(static_cast<grammar.rules.size()>) {
             std::list<std::string> split = splitString(text, "->");
             nonterminal = boost::trim_copy(split.front());
             pattern = trimElements(splitString(nonterminal, " "));
@@ -279,7 +279,7 @@ void Grammar::initializeAlphabetAndTerminals () {
     }
 }
 
-bool Grammar::collectDevelopmentFirsts(std::list<std::string>& development, std::list<std::string>& nonterminalFirsts) {
+bool Grammar::collectDevelopmentFirsts(std::list<std::string> const& development, std::list<std::string>& nonterminalFirsts) {
     bool result = false;
     bool epsilonInSymbolFirsts = true;
     
@@ -497,7 +497,7 @@ std::optional<Item> BasicItem::newItemAfterShift() {
 std::list<Item> BasicLR1Item::newItemsFromSymbolAfterDot() {
     std::list<Item> result = BasicItem::newItemsFromSymbolAfterDot();
 
-    if (result.size() == 0) return result;
+    if (result.empty()) return result;
 
     std::list<std::string> newLookAheads = {};
     bool epsilonPresent = false;
@@ -543,8 +543,7 @@ class Kernel {
         std::list<std::string> keys;
         
         //maybe initialize with grammar
-        Kernel (int index, std::list<Item> items) : index(index), items(items) {
-            closure = slice(items, 0);
+        Kernel (int index, std::list<Item> items) : index(index), items(items), closure(slice(items, 0)) {
             gotos = {};
             keys = {};
         }
@@ -559,7 +558,7 @@ class LRClosureTable {
         Grammar& grammar;
         std::list<Kernel> kernels;
 
-        LRClosureTable(Grammar& grammar) : grammar(grammar) {
+        explicit LRClosureTable(Grammar& grammar) : grammar(grammar) {
             kernels.push_back(Kernel(0, {Item(grammar.rules.front(), 0)}));
 
             for (int i = 0; i < kernels.size();) {
@@ -607,7 +606,7 @@ class LRClosureTable {
             }
             
             for (const std::string& key : kernel.keys) {
-                Kernel newKernel(kernels.size(), newKernels.at(key));
+                Kernel newKernel(static_cast<kernels.size()>, newKernels.at(key));
                 int targetKernelIndex = indexOf(newKernel, kernels);
                 
                 if (targetKernelIndex < 0) {
@@ -632,9 +631,9 @@ class LRAction {
         std::string actionType; // could be optimized to char
         int actionValue;
 
-        LRAction(std::string actionType, int actionValue) : actionType(actionType), actionValue(actionValue) {}
+        LRAction(std::string const& actionType, int actionValue) : actionType(actionType), actionValue(actionValue) {}
 
-        std::string toString() {
+        std::string toString() const {
             return actionType + std::to_string(actionValue);
         }
 };
@@ -644,7 +643,7 @@ class State {
         int index;
         std::map<std::string, std::list<LRAction>> mapping;
 
-        State(std::list<State> states) : index(states.size()) {}
+        explicit State(std::list<State> const& states) : index(static_cast<states.size()>) {}
 };
 
 class LRTable {
@@ -652,7 +651,7 @@ class LRTable {
         Grammar& grammar;
         std::list<State> states = {};
 
-        LRTable(LRClosureTable& closureTable) : grammar(closureTable.grammar) {
+        explicit LRTable(LRClosureTable& closureTable) : grammar(closureTable.grammar) {
             for (const Kernel& kernel : closureTable.kernels) {
                 State state(states);
 
