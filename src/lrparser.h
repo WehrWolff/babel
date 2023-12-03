@@ -11,7 +11,7 @@
 #include "tools.h"
 
 template<typename T>
-ostream& operator<<(ostream& os, const std::list<T>& myList) {
+std::ostream& operator<<(std::ostream& os, const std::list<T>& myList) {
     os << "{";
     if (!myList.empty()) {
         auto it = myList.begin();
@@ -26,7 +26,7 @@ ostream& operator<<(ostream& os, const std::list<T>& myList) {
 }
 
 template<typename K, typename V>
-ostream& operator<<(ostream& os, const std::map<K, V>& myMap) {
+std::ostream& operator<<(std::ostream& os, const std::map<K, V>& myMap) {
     os << "{";
     if (!myMap.empty()) {
         auto it = myMap.begin();
@@ -210,7 +210,7 @@ class Rule {
         std::list<std::string> pattern;
         std::list<std::string> development;        
         
-        Rule(Grammar& grammar, const std::string& text) : grammar(grammar), index(static_cast<grammar.rules.size()>) {
+        Rule(Grammar& grammar, const std::string& text) : grammar(grammar), index(static_cast<int>(grammar.rules.size()) ) {
             std::list<std::string> split = splitString(text, "->");
             nonterminal = boost::trim_copy(split.front());
             pattern = trimElements(splitString(nonterminal, " "));
@@ -233,7 +233,7 @@ class Rule {
 		    return true;
         }
         
-        friend ostream& operator<<(ostream& os, const Rule& rule) {
+        friend std::ostream& operator<<(std::ostream& os, const Rule& rule) {
             os << rule.nonterminal << " -> ";
             if (!rule.development.empty()) {
                 auto it = rule.development.begin();
@@ -606,7 +606,7 @@ class LRClosureTable {
             }
             
             for (const std::string& key : kernel.keys) {
-                Kernel newKernel(static_cast<kernels.size()>, newKernels.at(key));
+                Kernel newKernel(static_cast<int>(kernels.size()), newKernels.at(key));
                 int targetKernelIndex = indexOf(newKernel, kernels);
                 
                 if (targetKernelIndex < 0) {
@@ -643,7 +643,7 @@ class State {
         int index;
         std::map<std::string, std::list<LRAction>> mapping;
 
-        explicit State(std::list<State> const& states) : index(static_cast<states.size()>) {}
+        explicit State(std::list<State> const& states) : index(static_cast<int>(states.size())) {}
 };
 
 class LRTable {
