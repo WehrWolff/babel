@@ -469,7 +469,7 @@ class Item : public BasicLR1Item {
             return true;
         }
         
-        bool operator==(const Item& that) {
+        bool operator==(const Item& that) const {
             return rule == that.rule && dotIndex == that.dotIndex && includeEachOther(lookAheads, that.lookAheads);
         }
 };
@@ -548,7 +548,7 @@ class Kernel {
             keys = {};
         }
 
-        bool operator==(const Kernel& that) {
+        bool operator==(const Kernel& that) const {
             return includeEachOther(items, that.items);
         }
 };
