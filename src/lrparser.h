@@ -529,10 +529,8 @@ class LRClosureTable {
             //for (size_t i = 0; i < kernel.closure.size(); i++) {
                 //cout << "newItemsFromSymbolAfterDot" << endl;
                 std::list<UnifiedItem> newItemsFromSymbolAfterDot = closure.newItemsFromSymbolAfterDot();
-                std::cout << "items: " << newItemsFromSymbolAfterDot.size() << std::endl;
                 //std::list<UnifiedItem> newItemsFromSymbolAfterDot = getElement(i, kernel.closure).newItemsFromSymbolAfterDot();
                 for (UnifiedItem& item : newItemsFromSymbolAfterDot) {
-                    std::cout << "icecream" << std::endl;
                     //cout << kernel.closure.size() << endl;
                     item.addUniqueTo(kernel.closure);
                 }    
@@ -559,7 +557,7 @@ class LRClosureTable {
             for (const std::string& key : kernel.keys) {
                 Kernel newKernel(static_cast<int>(kernels.size()), newKernels.at(key));
                 int targetKernelIndex = indexOf(newKernel, kernels);
-                
+
                 if (targetKernelIndex < 0) {
                     kernels.push_back(newKernel);
                     targetKernelIndex = newKernel.index;
@@ -569,8 +567,8 @@ class LRClosureTable {
                         lookAheadsPropagated |= item.addUniqueTo(items);
                     }
                 }
-
-                if (kernel.gotos.find(key) != kernel.gotos.end()) kernel.gotos.at(key) = targetKernelIndex;
+                
+                kernel.gotos.insert({key, targetKernelIndex});
             }
             
             return lookAheadsPropagated;
@@ -592,9 +590,9 @@ class LRAction {
 class State {
     public:
         int index;
-        std::map<std::string, std::list<LRAction>> mapping;
+        std::map<std::string, LRAction> mapping;
 
-        explicit State(std::list<State> const& states) : index(static_cast<int>(states.size())) {} //not a proper construction
+        explicit State(std::list<State> const& states) : index(static_cast<int>(states.size())) {}
 };
 
 class LRTable {
@@ -606,18 +604,15 @@ class LRTable {
             for (const Kernel& kernel : closureTable.kernels) {
                 State state(states);
 
-                for (const std::string& key : kernel.keys) {
-                    if (kernel.gotos.find(key) != kernel.gotos.end()) {
-                        int nextStateIndex = kernel.gotos.at(key);
-
-                        state.mapping[key].push_back(LRAction((isElement(key, grammar.terminals) ? "s" : ""), nextStateIndex));
-                    } //kernel.keys contains everything key in gotos --> check insertion in gotos
+                for (const std::string& key : kernel.keys) {                    
+                    int nextStateIndex = kernel.gotos.at(key);
+                    state.mapping.insert({key, LRAction((isElement(key, grammar.terminals) ? "s" : ""), nextStateIndex)});
                 }
 
                 for (const UnifiedItem& item : kernel.closure) {
                     if (item.dotIndex == item.rule.development.size() || item.rule.development.front() == EPSILON) {
                         for (const std::string& lookAhead : item.lookAheads) {
-                            state.mapping[lookAhead].push_back(LRAction("r", item.rule.index));
+                            state.mapping.insert({lookAhead, LRAction("r", item.rule.index)});
                         }
                     }
                 }
@@ -632,15 +627,13 @@ std::optional<LRAction> chooseActionElement(State& state, std::string token) {
         return std::nullopt;
     }
 
-    std::list<LRAction> action = state.mapping.at(token);
-
-    return action.front();
+    return state.mapping.at(token);
 }
 
 
 int main()
 {
-    Grammar grammar("A' -> A\nA -> a A\nA -> a");    
+    Grammar grammar("A' -> A\nA -> a A\nA -> a");
     assert("A'" == grammar.axiom);
     assert(3 == grammar.rules.size());
     std::list<std::string> a = {"a"};
@@ -656,6 +649,25 @@ int main()
 
     LRTable lrTable(lrClosureTable);
 	assert(4 == lrTable.states.size());
+
+
+    Grammar grammar1("A' -> A\nA -> B\nA -> ''\nB -> ( A )");
+	assert("A\'" == grammar1.axiom);
+	assert(4 == grammar1.rules.size());
+    std::list<std::string> a1 = {EPSILON, "("};
+	assert(a1 == grammar1.firsts.at("A"));
+
+    LRClosureTable lrClosureTable1(grammar1);
+	assert(4 == lrClosureTable1.kernels.front().closure.size());
+	assert(10 == lrClosureTable1.kernels.size());
+
+    LRTable lrTable1(lrClosureTable1);
+	assert(10 == lrTable1.states.size());
+	assert("s3" == lrTable1.states.front().mapping.at("(").toString());
+	assert("r2" == lrTable1.states.front().mapping.at("$").toString());
+    assert("r0" == (*std::next(lrTable1.states.begin(), 1)).mapping.at("$").toString());
+    assert("4" == (*std::next(lrTable1.states.begin(), 3)).mapping.at("A").toString());
+    assert("r3" == (*std::next(lrTable1.states.begin(), 9)).mapping.at(")").toString());
 
     std::cout << "Hello World";
 
