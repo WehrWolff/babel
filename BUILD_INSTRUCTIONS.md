@@ -38,7 +38,7 @@ Clang is a compiler based on the LLVM compiler infrastructure. It's known for it
 To use Clang with CMake, you can set the `CXX` and `CC` variables in your `CMakeLists.txt` file to point to the Clang compiler. For example:
 
 ```cmake
-cmake set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
+set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
 set(CMAKE_C_COMPILER "/usr/bin/clang")
 ```
 
