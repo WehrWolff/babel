@@ -8,7 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(include)
 
 set(SOURCE_FILES
-    src/a.cpp
+    src/shell.cpp
 )
 
 add_executable(babel ${SOURCE_FILES})
