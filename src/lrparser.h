@@ -1,14 +1,18 @@
 #include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <cassert>
+#include <fstream>
 #include <list>
 #include <map>
 #include <optional>
 #include <regex>
+#include <sstream>
 #include <stack>
 #include <string>
 #include <variant>
+#include <vector>
 #include "tools.h"
+#include "lexer.h"
 
 #include <iostream>
 
@@ -630,46 +634,123 @@ std::optional<LRAction> chooseActionElement(State& state, std::string token) {
     return state.mapping.at(token);
 }
 
+class Tree {
+    public:
+        std::string value;
+        std::list<std::string> children;
 
-int main()
-{
-    Grammar grammar("A' -> A\nA -> a A\nA -> a");
-    assert("A'" == grammar.axiom);
-    assert(3 == grammar.rules.size());
-    std::list<std::string> a = {"a"};
-	assert(a == grammar.firsts.at("A"));
-	assert(UnifiedItem(Rule(grammar, "A -> a A"), 1) == UnifiedItem(Rule(grammar, "A -> a A"), 1));
-	assert(0 == indexOf(UnifiedItem(Rule(grammar, "A -> a A"), 1), {UnifiedItem(Rule(grammar, "A -> a A"), 1)}));
-	
-    LRClosureTable lrClosureTable(grammar);
-	std::cout << "actual: " << lrClosureTable.kernels.front().closure.size() << std::endl;
-	std::cout << "actual: " << lrClosureTable.kernels.size() << std::endl;
-	assert(3 == lrClosureTable.kernels.front().closure.size());
-	assert(4 == lrClosureTable.kernels.size());
+        explicit Tree(std::string value) : value(value) {}
 
-    LRTable lrTable(lrClosureTable);
-	assert(4 == lrTable.states.size());
+        std::string toString() {
+            return value;
+        }
+};
 
+class Parser {
+    private:        
+        LRTable lrTable;
+        std::list<Token> tokens;
 
-    Grammar grammar1("A' -> A\nA -> B\nA -> ''\nB -> ( A )");
-	assert("A\'" == grammar1.axiom);
-	assert(4 == grammar1.rules.size());
-    std::list<std::string> a1 = {EPSILON, "("};
-	assert(a1 == grammar1.firsts.at("A"));
+    public:
+        Parser(LRTable lrTable, std::list<Token> _tokens) : lrTable(lrTable), tokens(_tokens) {tokens.push_back(Token("$", "$"));}
 
-    LRClosureTable lrClosureTable1(grammar1);
-	assert(4 == lrClosureTable1.kernels.front().closure.size());
-	assert(10 == lrClosureTable1.kernels.size());
+        std::string retrieveMessage(State state, std::string token) const {
+            std::map<std::string, LRAction> m = state.mapping;
+            
+            std::list<std::string> expected;
+            for (auto it = m.begin(); it != m.end(); ++it) {
+                if (isElement(it->first, lrTable.grammar.nonterminals)) {
+                    expected.splice(expected.end(), lrTable.grammar.firsts.at(it->first));
+                } else {
+                    expected.push_back(it->first);
+                }
+            }
+            
+            std::string msg = "Expected";
+            expected.remove(EPSILON);
+            expected.sort();
+            expected.unique();
+            for (std::string elmnt : expected) {
+                msg += " '" + elmnt + "' or";
+            }
+            msg.erase(msg.rfind(' '));
+            msg += " but found '" + token + "'";
+            return std::regex_replace(msg, std::regex("'\\$'"), "EOF");
+        }
 
-    LRTable lrTable1(lrClosureTable1);
-	assert(10 == lrTable1.states.size());
-	assert("s3" == lrTable1.states.front().mapping.at("(").toString());
-	assert("r2" == lrTable1.states.front().mapping.at("$").toString());
-    assert("r0" == (*std::next(lrTable1.states.begin(), 1)).mapping.at("$").toString());
-    assert("4" == (*std::next(lrTable1.states.begin(), 3)).mapping.at("A").toString());
-    assert("r3" == (*std::next(lrTable1.states.begin(), 9)).mapping.at(")").toString());
+        void parse() const {
+            std::stack<std::string> symbolStack;
+            std::stack<int> stateStack;
+            stateStack.push(0);
+            int tokenIndex = 0;
+            Token token = *std::next(tokens.begin(), tokenIndex);
+            std::string token_type = token.getType();
+            State state = *std::next(lrTable.states.begin(), stateStack.top());
+            std::optional<LRAction> actionElement = chooseActionElement(state, token_type);
 
-    std::cout << "Hello World";
+            while (actionElement != std::nullopt && actionElement.value().toString() != "r0") {
+                if (actionElement.value().actionType == "s") {
+                    symbolStack.push((*std::next(tokens.begin(), tokenIndex++)).getType());
+                    stateStack.push(actionElement.value().actionValue);
+                } else if (actionElement.value().actionType == "r") {
+                    int ruleIndex = actionElement.value().actionValue;
+                    Rule rule = *std::next(lrTable.grammar.rules.begin(), ruleIndex);
+                    int removeCount = isElement(EPSILON, rule.development) ? 0 : rule.development.size();
 
-    return 0;
+                    Tree node(rule.nonterminal);
+
+                    for (int i = 0; i < removeCount; i++) {
+                        node.children.push_back(symbolStack.top());
+                        symbolStack.pop();
+                        stateStack.pop();
+                    }
+
+                    symbolStack.push(rule.nonterminal);
+                } else {
+                    stateStack.push(actionElement.value().actionValue);
+                }
+                
+                state = *std::next(lrTable.states.begin(), stateStack.top());
+                token_type = (symbolStack.size() + stateStack.size()) % 2 == 0 ? symbolStack.top() : (*std::next(tokens.begin(), tokenIndex)).getType();
+                actionElement = chooseActionElement(state, token_type);
+            }
+
+            if (actionElement == std::nullopt) {
+                std::cout << "SyntaxError: " << retrieveMessage(state, (*std::next(tokens.begin(), tokenIndex)).getValue()) << std::endl;
+            } else if (actionElement.value().toString() == "r0") {
+                std::cout << "success" << std::endl;
+            }
+        }
+};
+
+std::string transform_string(const std::string& input_string) {
+    std::istringstream iss(input_string);
+    std::string line;
+    std::vector<std::string> lines;
+    while (std::getline(iss, line)) {
+        lines.push_back(line);
+    }
+
+    size_t last_colon_pos;
+    std::string last_colon_part;
+
+    for (auto& line : lines) {
+        
+        if (line.rfind(':') != std::string::npos) {
+            last_colon_pos = line.rfind(':');
+            last_colon_part = line.substr(0, last_colon_pos);
+        }
+        
+        size_t last_pipe_pos = line.rfind('|');
+        if (last_pipe_pos != std::string::npos) {
+            line.insert(last_pipe_pos, last_colon_part);
+        }
+    }
+
+    std::ostringstream oss;
+    for (const auto& line : lines) {
+        oss << line << '\n';
+    }
+    
+    return std::regex_replace(oss.str(), std::regex(":|\\|"), "->");
 }
