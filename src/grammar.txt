@@ -1,11 +1,12 @@
-expr        : expr PLUS term
-            | expr MINUS term
-            | term
+S'         : expr
 
-term        : term MULTIPLY factor
-            | term DIVIDE factor
-            | factor
+expr       : expr PLUS term
+           | expr MINUS term
+           | term
 
-factor      : INTEGER
-            | FLOATING_POINT
-            | LPAREN expr RPAREN
+term       : term MULTIPLY factor
+           | term DIVIDE factor
+           | factor
+
+factor     : INTEGER
+           | LPAREN expr RPAREN
