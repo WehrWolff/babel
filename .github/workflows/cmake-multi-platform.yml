@@ -47,7 +47,7 @@ jobs:
             compiler_version: 15
             libcxx: --settings=compiler.libcxx=libc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
-            cmd: sudo apt-get -y --fix-broken install gcc-20 g++-20
+            cmd: sudo apt-get -y --fix-broken install gcc-11 g++-11
 #/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> /home/runner/.bashrc && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && brew install libcxx
         exclude:
           - os: windows-latest
