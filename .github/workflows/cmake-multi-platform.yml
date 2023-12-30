@@ -57,6 +57,7 @@ jobs:
     - name: Run Conan
       run: |
         pip install conan && \
+        conan profile detect || true && \
         conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }}
 
     - name: Configure CMake
