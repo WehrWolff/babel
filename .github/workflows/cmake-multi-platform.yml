@@ -67,9 +67,6 @@ jobs:
         cd build
         ls
         echo "hi"
-        cd conan
-        ls
-        echo "hi"
         cd Release
         ls
         echo "hi"
