@@ -30,15 +30,15 @@ jobs:
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
-            conan_toolchain_path: ${{ github.workspace }}/build/build/generators/conan_toolchain.cmake
+            conan_toolchain_path: build/build/generators/conan_toolchain.cmake
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
-            conan_toolchain_path: ${{ github.workspace }}/build/build/Release/generators/conan_toolchain.cmake
+            conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
-            conan_toolchain_path: ${{ github.workspace }}/build/build/Release/generators/conan_toolchain.cmake
+            conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
         exclude:
           - os: windows-latest
             c_compiler: gcc
@@ -71,7 +71,7 @@ jobs:
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DCMAKE_TOOLCHAIN_FILE=${{ matrix.conan_toolchain_path }}
+        -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/${{ matrix.conan_toolchain_path }}
         -S ${{ github.workspace }}
         -G "Unix Makefiles"
 
