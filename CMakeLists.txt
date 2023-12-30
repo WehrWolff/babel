@@ -12,9 +12,6 @@ set(SOURCE_FILES
     src/shell.cpp
 )
 
-# Set the path to the Conan toolchain file
-set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_LIST_DIR}/conan/build/Release/generators/conan_toolchain.cmake)
-
 #include_directories(include)
 
 find_package(Boost 1.83.0 REQUIRED COMPONENTS algorithm)
