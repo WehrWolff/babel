@@ -18,7 +18,7 @@ ls
 cd build
 ls
 
-cmake .. -DCMAKE_TOOLCHAIN_FILE=./conan/build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+cmake .. -DCMAKE_TOOLCHAIN_FILE=./build/build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
 make
 
 # Run in shell
