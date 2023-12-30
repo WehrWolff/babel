@@ -47,9 +47,7 @@ jobs:
             compiler_version: 15
             libcxx: --settings=compiler.libcxx=libc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
-            run: |
-              /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-              brew install libcxx
+            cmd: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && brew install libcxx
         exclude:
           - os: windows-latest
             c_compiler: gcc
@@ -70,6 +68,7 @@ jobs:
 
     - name: Manage Packages with Conan          
       run: |
+        $(( matrix.cmd ))
         pip install conan
         conan profile detect || true
         conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} ${{ matrix.libcxx }}
