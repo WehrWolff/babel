@@ -60,14 +60,22 @@ jobs:
         conan profile detect || true
         conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }}
         ls
+        echo "hi"
         cd ${{ github.workspace }}/build
         ls
+        echo "hi"
+        cd build
+        ls
+        echo "hi"
         cd conan
         ls
+        echo "hi"
         cd Release
         ls
+        echo "hi"
         cd generators
         ls
+        echo "hi"
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
