@@ -2,6 +2,7 @@
 /_cmake
 /build
 /bin
+/conan
 /dist
 /lib
 
@@ -22,6 +23,7 @@
 *.app
 
 # User-specific files
+CMakeUserPresets.json
 # CMakeCache.txt
 # CMakeFiles/
 # cmake_install.cmake
