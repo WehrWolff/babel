@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#Verify conan is installed and make sure a default profile is generated
+# Verify conan is installed and make sure a default profile is generated
 pip install conan
 conan profile detect || true
 
@@ -14,9 +14,7 @@ conan install . --output-folder=./build --build=missing --settings=compiler.cpps
 cp src/grammar.txt build/build/grammar.txt
 
 # Build commands
-ls
 cd build
-ls
 
 cmake .. -DCMAKE_TOOLCHAIN_FILE=./build/build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
 make
