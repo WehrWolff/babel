@@ -1,5 +1,9 @@
 #!/bin/bash
 
+#Verify conan is installed and make sure a default profile is generated
+pip install conan
+conan profile detect || true
+
 # Make sure packages are installed
 conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=Release
 
