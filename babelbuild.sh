@@ -11,7 +11,7 @@ conan install . --output-folder=./build --build=missing --settings=compiler.cpps
 # mkdir build
 
 # Copy required files
-cp src/grammar.txt build/grammar.txt
+cp src/grammar.txt build/build/grammar.txt
 
 # Build commands
 ls
@@ -22,4 +22,4 @@ cmake .. -DCMAKE_TOOLCHAIN_FILE=./build/build/Release/generators/conan_toolchain
 make
 
 # Run in shell
-./babel
+# ./babel
