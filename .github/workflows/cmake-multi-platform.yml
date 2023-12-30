@@ -68,7 +68,7 @@ jobs:
 
     - name: Manage Packages with Conan          
       run: |
-        $(( matrix.cmd ))
+        ${{ matrix.cmd }}
         pip install conan
         conan profile detect || true
         conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} ${{ matrix.libcxx }}
