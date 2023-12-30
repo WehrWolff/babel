@@ -32,18 +32,21 @@ jobs:
             cpp_compiler: cl
             conan_compiler: msvc
             compiler_version: 193
+            libcxx: libc++11
             conan_toolchain_path: build/build/generators/conan_toolchain.cmake
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
             conan_compiler: gcc
             compiler_version: 11
+            libcxx: libc++11
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
             conan_compiler: clang
             compiler_version: 15
+            libcxx: libc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
         exclude:
           - os: windows-latest
@@ -67,7 +70,7 @@ jobs:
       run: |
         pip install conan
         conan profile detect || true
-        conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }}
+        conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} --settings=compiler.libcxx=${{ matrix.libcxx }}
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
