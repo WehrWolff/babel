@@ -96,6 +96,8 @@ cases               : CASE expression block
                     | CASE expression block cases
 
 loop_stmt           : FOR assignment SEMICOLON expression SEMICOLON expression DO block END
+                    | FOR assignment TO expression STEP expression DO block END
+                    | FOR assignment TO expression DO block END
                     | WHILE expression DO block END
 
 try_stmt            : TRY block catch_blocks END

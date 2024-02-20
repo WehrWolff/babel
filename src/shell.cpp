@@ -54,6 +54,7 @@ void run (std::string file_name, std::string text) {
         {"WHILE", "while"},
         {"FOR", "for"},
         {"TO", "to"},
+        {"STEP", "step"},
         {"TRY", "try"},
         {"CATCH", "catch"},
         {"FINALLY", "finally"},

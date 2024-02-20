@@ -641,6 +641,12 @@ class Tree {
 
         explicit Tree(std::string value) : value(value) {}
 
+        friend std::ostream& operator<<(std::ostream& os, const Tree& tree) {
+            for (std::string current: children) {
+                os << '(' << current << '), ';
+            }
+        }
+
         std::string toString() {
             return value;
         }
@@ -678,7 +684,7 @@ class Parser {
             return std::regex_replace(msg, std::regex("'\\$'"), "EOF");
         }
 
-        void parse() const {
+        Tree parse() const {
             std::stack<std::string> symbolStack;
             std::stack<int> stateStack;
             stateStack.push(0);
@@ -719,7 +725,10 @@ class Parser {
                 std::cout << "SyntaxError: " << retrieveMessage(state, (*std::next(tokens.begin(), tokenIndex)).getValue()) << std::endl;
             } else if (actionElement.value().toString() == "r0") {
                 std::cout << "success" << std::endl;
+                return node;
             }
+
+            return nullptr;
         }
 };
 
