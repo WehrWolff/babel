@@ -1,12 +1,204 @@
-S'         : expr
+program             : statement_list
 
-expr       : expr PLUS term
-           | expr MINUS term
-           | term
+terminator          : NEWLINE
+                    | SEMICOLON
+                
+statement_list      : statement
+                    | statement statement_list
+                    
+statement           : simple_stmt_list
+                    | compound_stmt
 
-term       : term MULTIPLY factor
-           | term DIVIDE factor
-           | factor
+simple_stmt_list    : simple_stmt NEWLINE
+                    | simple_stmt SEMICOLON NEWLINE
+                    | simple_stmt SEMICOLON simple_stmt_list
 
-factor     : INTEGER
-           | LPAREN expr RPAREN
+simple_stmt         : PASS
+                    | CONTINUE
+                    | BREAK
+                    | return_stmt
+                    | raise_stmt
+                    | import_stmt
+                    | assignment
+                    | function_call
+
+return_stmt         : RETURN comma_values
+                    | RETURN
+
+raise_stmt          : RAISE expression
+
+import_stmt         : IMPORT comma_values
+
+assignment          : VAR assignment_operator expression
+                    | VAR type_spec assignment_operator expression
+
+assignment_operator : EQUALS
+                    | PLUS_EQUALS
+                    | MINUS_EQUALS
+                    | MULTIPLY_EQUALS
+                    | DIVIDE_EQUALS
+                    | POWER_EQUALS
+                    | MODULO_EQUALS
+                    | INTEGER_DIVIDE_EQUALS
+
+type_spec           : COLON TYPE
+
+compound_stmt       : task_def
+                    | class_def
+                    | struct_def
+                    | control_flow
+                    | loop_stmt
+                    | try_stmt
+
+block               : NEWLINE statement_list
+                    | simple_stmt_list
+
+args                : VAR
+                    | VAR type_spec
+                    | VAR EQUALS expression
+                    | VAR type_spec EQUALS expression
+                    | args COMMA args
+
+task_header         : TASK VAR LPAREN RPAREN
+                    | TASK VAR LPAREN RPAREN RARR TYPE
+                    | TASK VAR LPAREN args RPAREN
+                    | TASK VAR LPAREN args RPAREN RARR TYPE
+
+task_def            : task_header block END
+
+task_def_list       : task_def
+                    | task_def task_def_list
+
+members             : VAR terminator
+                    | VAR type_spec terminator
+                    | VAR terminator members
+                    | VAR type_spec terminator members
+
+struct_def          : STRUCT VAR NEWLINE members END
+
+class_def           : CLASS VAR NEWLINE members task_def_list END
+
+control_flow        : if_stmt
+                    | match_stmt
+
+if_stmt             : IF expression THEN block END
+                    | IF expression THEN block elif_stmt
+                    | IF expression THEN block ELSE block END
+
+elif_stmt           : ELIF expression THEN block END
+                    | ELIF expression THEN block elif_stmt
+                    | ELIF expression THEN block ELSE block END
+
+match_stmt          : MATCH expression NEWLINE cases 
+                    | MATCH expression NEWLINE cases OTHERWISE block
+
+cases               : CASE expression block
+                    | CASE expression block cases
+
+loop_stmt           : FOR assignment SEMICOLON expression SEMICOLON expression DO block END
+                    | WHILE expression DO block END
+
+try_stmt            : TRY block catch_blocks END
+                    | TRY block catch_blocks FINALLY block END
+
+catch_blocks        : CATCH VAR block
+                    | CATCH VAR block catch_blocks
+
+expression          : disjunction
+
+disjunction         : conjunction
+                    | conjunction OR disjunction
+
+conjunction         : inversion
+                    | inversion AND conjunction
+
+inversion           : NOT inversion
+                    | comparison
+
+comparison          : bitwise_or 
+                    | bitwise_or comparison_operator comparison
+
+comparison_operator : EQEQ
+                    | LTEQ
+                    | GTEQ
+                    | NOTEQ
+                    | LT
+                    | GT
+
+bitwise_or          : bitwise_or BIT_OR bitwise_xor
+                    | bitwise_xor
+
+bitwise_xor         : bitwise_xor BIT_XOR bitwise_and
+                    | bitwise_and
+
+bitwise_and         : bitwise_and BIT_AND shift_expression
+                    | shift_expression
+
+shift_expression    : shift_expression LSHIFT sum
+                    | shift_expression RSHIFT sum
+                    | sum
+
+sum                 : sum PLUS term
+                    | sum MINUS term
+                    | term
+
+term                : term MULTIPLY factor
+                    | term DIVIDE factor
+                    | term INTEGER_DIVIDE factor
+                    | term MODULO factor
+                    | factor
+
+factor              : PLUS factor
+                    | MINUS factor
+                    | factor INCREMENT
+                    | factor DECREMENT
+                    | exponentiation
+
+exponentiation      : primary POWER factor
+                    | primary
+
+primary             : primary DOT VAR
+                    | primary LSQUARE expression RSQUARE
+                    | function_call
+                    | class_construction
+                    | atom
+
+function_call       : VAR LPAREN RPAREN
+                    | VAR LPAREN params RPAREN
+
+class_construction  : NEW VAR LPAREN RPAREN
+                    | NEW VAR LPAREN params RPAREN
+
+params              : VAR EQUALS expression
+                    | expression
+                    | params COMMA params
+
+atom                : STRING
+                    | CHAR
+                    | BOOL
+                    | INTEGER
+                    | FLOATING_POINT
+                    | NULL
+                    | VAR
+                    | list
+                    | tuple
+                    | set
+                    | map
+
+comma_values        : expression
+                    | expression COMMA comma_values
+
+list                : LSQUARE comma_values RSQUARE
+                    | LSQUARE RSQUARE
+
+tuple               : LPAREN comma_values RPAREN
+                    | LPAREN RPAREN
+
+set                 : LBRACE comma_values RBRACE
+                    | LBRACE RBRACE
+
+kvpairs             : expression COLON expression
+                    | kvpairs COMMA kvpairs
+
+map                 : LBRACE kvpairs RBRACE
+                    | LBRACE RBRACE
