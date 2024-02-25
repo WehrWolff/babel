@@ -106,7 +106,7 @@ std::list<std::string> splitString(const std::string& input, const std::string& 
 
 // leave for clarity, potentially replace later
 template <typename T>
-bool isElement(T elmnt, std::list<T>& list) {
+bool isElement(T elmnt, const std::list<T>& list) {
     return std::find(list.begin(), list.end(), elmnt) != list.end();
 }
 

@@ -8,7 +8,7 @@ conan profile detect || true
 conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=Release
 
 # Copy required files
-cp src/grammar.txt build/build/grammar.txt
+cp src/grammar.txt build/grammar.txt
 
 # Build commands
 cd build

@@ -2,16 +2,16 @@ program             : statement_list
 
 terminator          : NEWLINE
                     | SEMICOLON
-                
+
 statement_list      : statement
                     | statement statement_list
-                    
+
 statement           : simple_stmt_list
                     | compound_stmt
 
 simple_stmt_list    : simple_stmt NEWLINE
                     | simple_stmt SEMICOLON NEWLINE
-                    | simple_stmt SEMICOLON simple_stmt_list
+                    | simple_stmt SEMICOLON simple_stmt_list
 
 simple_stmt         : PASS
                     | CONTINUE
@@ -23,7 +23,7 @@ simple_stmt         : PASS
                     | function_call
 
 return_stmt         : RETURN comma_values
-                    | RETURN
+                    | RETURN
 
 raise_stmt          : RAISE expression
 
@@ -47,7 +47,7 @@ compound_stmt       : task_def
                     | class_def
                     | struct_def
                     | control_flow
-                    | loop_stmt
+                    | loop_stmt
                     | try_stmt
 
 block               : NEWLINE statement_list
@@ -61,7 +61,7 @@ args                : VAR
 
 task_header         : TASK VAR LPAREN RPAREN
                     | TASK VAR LPAREN RPAREN RARR TYPE
-                    | TASK VAR LPAREN args RPAREN
+                    | TASK VAR LPAREN args RPAREN
                     | TASK VAR LPAREN args RPAREN RARR TYPE
 
 task_def            : task_header block END
@@ -89,15 +89,15 @@ elif_stmt           : ELIF expression THEN block END
                     | ELIF expression THEN block elif_stmt
                     | ELIF expression THEN block ELSE block END
 
-match_stmt          : MATCH expression NEWLINE cases 
-                    | MATCH expression NEWLINE cases OTHERWISE block
+match_stmt          : MATCH expression NEWLINE cases
+                    | MATCH expression NEWLINE cases OTHERWISE block
 
 cases               : CASE expression block
                     | CASE expression block cases
 
 loop_stmt           : FOR assignment SEMICOLON expression SEMICOLON expression DO block END
-                    | FOR assignment TO expression STEP expression DO block END
-                    | FOR assignment TO expression DO block END
+                    | FOR assignment TO expression STEP expression DO block END
+                    | FOR assignment TO expression DO block END
                     | WHILE expression DO block END
 
 try_stmt            : TRY block catch_blocks END
@@ -117,28 +117,28 @@ conjunction         : inversion
 inversion           : NOT inversion
                     | comparison
 
-comparison          : bitwise_or 
-                    | bitwise_or comparison_operator comparison
+comparison          : bitwise_or
+                    | bitwise_or comparison_operator comparison
 
 comparison_operator : EQEQ
                     | LTEQ
-                    | GTEQ
-                    | NOTEQ
-                    | LT
+                    | GTEQ
+                    | NOTEQ
+                    | LT
                     | GT
 
 bitwise_or          : bitwise_or BIT_OR bitwise_xor
                     | bitwise_xor
 
 bitwise_xor         : bitwise_xor BIT_XOR bitwise_and
-                    | bitwise_and
+                    | bitwise_and
 
 bitwise_and         : bitwise_and BIT_AND shift_expression
                     | shift_expression
 
 shift_expression    : shift_expression LSHIFT sum
                     | shift_expression RSHIFT sum
-                    | sum
+                    | sum
 
 sum                 : sum PLUS term
                     | sum MINUS term
@@ -146,14 +146,14 @@ sum                 : sum PLUS term
 
 term                : term MULTIPLY factor
                     | term DIVIDE factor
-                    | term INTEGER_DIVIDE factor
-                    | term MODULO factor
+                    | term INTEGER_DIVIDE factor
+                    | term MODULO factor
                     | factor
 
 factor              : PLUS factor
                     | MINUS factor
                     | factor INCREMENT
-                    | factor DECREMENT
+                    | factor DECREMENT
                     | exponentiation
 
 exponentiation      : primary POWER factor
@@ -161,9 +161,9 @@ exponentiation      : primary POWER factor
 
 primary             : primary DOT VAR
                     | primary LSQUARE expression RSQUARE
-                    | function_call
-                    | class_construction
-                    | atom
+                    | function_call
+                    | class_construction
+                    | atom
 
 function_call       : VAR LPAREN RPAREN
                     | VAR LPAREN params RPAREN
@@ -172,7 +172,7 @@ class_construction  : NEW VAR LPAREN RPAREN
                     | NEW VAR LPAREN params RPAREN
 
 params              : VAR EQUALS expression
-                    | expression
+                    | expression
                     | params COMMA params
 
 atom                : STRING
@@ -182,8 +182,8 @@ atom                : STRING
                     | FLOATING_POINT
                     | NULL
                     | VAR
-                    | list
-                    | tuple
+                    | list
+                    | tuple
                     | set
                     | map
 
@@ -200,7 +200,7 @@ set                 : LBRACE comma_values RBRACE
                     | LBRACE RBRACE
 
 kvpairs             : expression COLON expression
-                    | kvpairs COMMA kvpairs
+                    | kvpairs COMMA kvpairs
 
 map                 : LBRACE kvpairs RBRACE
                     | LBRACE RBRACE

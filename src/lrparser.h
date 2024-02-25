@@ -1,5 +1,10 @@
 #include <algorithm>
 #include <boost/algorithm/string.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/serialization/map.hpp>
+#include <boost/serialization/list.hpp>
+#include <boost/serialization/string.hpp>
 #include <cassert>
 #include <fstream>
 #include <list>
@@ -120,10 +125,11 @@ class Grammar {
         std::list<std::string> terminals;
         std::list<Rule> rules;
         std::string text;
-        std::map<std::string, std::list<std::string>> firsts;
+        mutable std::map<std::string, std::list<std::string>> firsts;
         std::map<std::string, std::list<std::string>> follows;
         std::string axiom;
 
+        Grammar() = default;
         explicit Grammar(std::string const& text) {
             initializeRulesAndAlphabetAndNonterminals(text);
             initializeAlphabetAndTerminals();
@@ -159,7 +165,19 @@ class Grammar {
             if (epsilonInSymbolFirsts) addUnique(EPSILON, result);
 
             return result;
-        }       
+        }
+
+        template <class Archive>
+        void serialize(Archive& ar, const unsigned int version) {
+            ar & alphabet;
+            ar & nonterminals;
+            ar & terminals;
+            ar & rules;
+            ar & text;
+            ar & firsts;
+            ar & follows;
+            ar & axiom;
+        }
 
         /* bool validate(std::list symbols, Token nextTok) {
             std::string token_type = nextTok.getType();
@@ -210,12 +228,13 @@ class Grammar {
 
 class Rule {
     public:
-        Grammar& grammar;
+        Grammar grammar;
         int index;
         std::string nonterminal;
         std::list<std::string> pattern;
-        std::list<std::string> development;        
+        std::list<std::string> development;
         
+        Rule() = default;
         Rule(Grammar& grammar, const std::string& text) : grammar(grammar), index(static_cast<int>(grammar.rules.size()) ) {
             std::list<std::string> split = splitString(text, "->");
             nonterminal = boost::trim_copy(split.front());
@@ -250,6 +269,15 @@ class Rule {
                 }
             }
             return os;
+        }
+
+        template <class Archive>
+        void serialize(Archive& ar, const unsigned int version) {
+            ar & grammar;
+            ar & index;
+            ar & nonterminal;
+            ar & pattern;
+            ar & development;
         }
 };
 
@@ -301,7 +329,7 @@ bool Grammar::collectDevelopmentFirsts(std::list<std::string>& development, std:
         if (firsts.find(symbol) != firsts.end()) {
             for (std::string& first : firsts.at(symbol)) { //potentially mark const
                 epsilonInSymbolFirsts |= first == EPSILON;
-                result |= addUnique(first, nonterminalFirsts);
+                result |= addUnique(boost::trim_copy(first), nonterminalFirsts);
             }
         }
 
@@ -362,7 +390,8 @@ void Grammar::initializeFollows() {
 
                     for (std::string& first : afterSymbolFirsts) { //potentially mark const
                         if (first == EPSILON) {
-                            std::list<std::string> nonterminalFollows = follows.at(rule.nonterminal);
+                            //std::list<std::string> nonterminalFollows = follows.at(rule.nonterminal);
+                            std::list<std::string> nonterminalFollows = follows[rule.nonterminal];
 
                             for (std::string& _ : nonterminalFollows) { //potentially mark const
                                 notDone |= addUnique(_, symbolFollows);
@@ -381,7 +410,7 @@ void Grammar::initializeFollows() {
 std::list<Rule> Grammar::getRulesForNonterminal(std::string nonterminal) {
     std::list<Rule> result = {};
 
-    for (Rule rule : rules) { //potentially mark const
+    for (Rule rule : rules) {
         if (nonterminal == rule.nonterminal) {
             result.push_back(rule);
         }
@@ -396,7 +425,7 @@ class UnifiedItem {
         int dotIndex;
         std::list<std::string> lookAheads;
 
-        UnifiedItem (Rule rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {
+        UnifiedItem(Rule rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {          
             if (rule.index == 0) {
                 lookAheads.push_back("$");
             }
@@ -510,20 +539,24 @@ class LRClosureTable {
         Grammar& grammar;
         std::list<Kernel> kernels;
 
-        explicit LRClosureTable(Grammar& grammar) : grammar(grammar) {
-            kernels.push_back(Kernel(0, {UnifiedItem(grammar.rules.front(), 0)}));
-
+        explicit LRClosureTable(Grammar& grammar) : grammar(grammar) {     
+            std::list<UnifiedItem> l = {UnifiedItem(grammar.rules.front(), 0)};
+            
+            Kernel k(0, l);            
+            kernels.push_back(k);            
+            
             for (auto it = kernels.begin(); it != kernels.end();) {
                 //Kernel& kernel = getUpdateableElement(i, kernels);
                 //Kernel& kernel = *std::next(kernels.begin(), i);
                 Kernel& kernel = *it;
-                
+
                 updateClosure(kernel);
 
-                if (addGotos(kernel, kernels)) {
+                if (addGotos(kernel, kernels)) {                    
                     it = kernels.begin();
                 } else {
                     ++it;
+                    std::cout << "size: " << kernels.size() << ", i: " << std::distance( kernels.begin(), it ) << std::endl;
                 }
             }
         }
@@ -544,7 +577,7 @@ class LRClosureTable {
         bool addGotos(Kernel& kernel, std::list<Kernel>& kernels) {
             bool lookAheadsPropagated = false;
             std::map<std::string, std::list<UnifiedItem>> newKernels;
-            
+
             for (UnifiedItem& item : kernel.closure) {
                 std::optional<UnifiedItem> newItem = item.newItemAfterShift();
 
@@ -584,10 +617,17 @@ class LRAction {
         std::string actionType; // could be optimized to char
         int actionValue;
 
+        LRAction() = default;
         LRAction(std::string const& actionType, int actionValue) : actionType(actionType), actionValue(actionValue) {}
 
         std::string toString() const {
             return actionType + std::to_string(actionValue);
+        }
+
+        template <class Archive>
+        void serialize(Archive& ar, const unsigned int version) {
+            ar & actionType;
+            ar & actionValue;
         }
 };
 
@@ -596,21 +636,29 @@ class State {
         int index;
         std::map<std::string, LRAction> mapping;
 
+        State() = default;
         explicit State(std::list<State> const& states) : index(static_cast<int>(states.size())) {}
+
+        template <class Archive>
+        void serialize(Archive& ar, const unsigned int version) {
+            ar & index;
+            ar & mapping;
+        }
 };
 
 class LRTable {
     public:
-        Grammar& grammar;
+        Grammar grammar;
         std::list<State> states = {};
 
+        LRTable() = default;
         explicit LRTable(LRClosureTable& closureTable) : grammar(closureTable.grammar) {
             for (const Kernel& kernel : closureTable.kernels) {
                 State state(states);
 
                 for (const std::string& key : kernel.keys) {                    
                     int nextStateIndex = kernel.gotos.at(key);
-                    state.mapping.insert({key, LRAction((isElement(key, grammar.terminals) ? "s" : ""), nextStateIndex)});
+                    state.mapping.insert({key, LRAction((isElement(key, closureTable.grammar.terminals) ? "s" : ""), nextStateIndex)});
                 }
 
                 for (const UnifiedItem& item : kernel.closure) {
@@ -623,6 +671,12 @@ class LRTable {
                 
                 states.push_back(state);
             }
+        }
+
+        template <class Archive>
+        void serialize(Archive& ar, const unsigned int version) {
+            ar & grammar;
+            ar & states;
         }
 };
 
@@ -639,12 +693,14 @@ class Tree {
         std::string value;
         std::list<std::string> children;
 
+        Tree() = default;
         explicit Tree(std::string value) : value(value) {}
 
         friend std::ostream& operator<<(std::ostream& os, const Tree& tree) {
-            for (std::string current: children) {
-                os << '(' << current << '), ';
+            for (const std::string& current : tree.children) {
+                os << "(" << current << "), ";
             }
+            return os;
         }
 
         std::string toString() {
@@ -655,10 +711,10 @@ class Tree {
 class Parser {
     private:        
         LRTable lrTable;
-        std::list<Token> tokens;
 
     public:
-        Parser(LRTable lrTable, std::list<Token> _tokens) : lrTable(lrTable), tokens(_tokens) {tokens.push_back(Token("$", "$"));}
+        Parser() = default;
+        explicit Parser(LRTable lrTable) : lrTable(lrTable) {}
 
         std::string retrieveMessage(State state, std::string token) const {
             std::map<std::string, LRAction> m = state.mapping;
@@ -684,7 +740,8 @@ class Parser {
             return std::regex_replace(msg, std::regex("'\\$'"), "EOF");
         }
 
-        Tree parse() const {
+        void parse(std::list<Token> tokens) const {
+            tokens.push_back(Token("$", "$"));
             std::stack<std::string> symbolStack;
             std::stack<int> stateStack;
             stateStack.push(0);
@@ -693,6 +750,7 @@ class Parser {
             std::string token_type = token.getType();
             State state = *std::next(lrTable.states.begin(), stateStack.top());
             std::optional<LRAction> actionElement = chooseActionElement(state, token_type);
+            //Tree node;
 
             while (actionElement != std::nullopt && actionElement.value().toString() != "r0") {
                 if (actionElement.value().actionType == "s") {
@@ -725,10 +783,13 @@ class Parser {
                 std::cout << "SyntaxError: " << retrieveMessage(state, (*std::next(tokens.begin(), tokenIndex)).getValue()) << std::endl;
             } else if (actionElement.value().toString() == "r0") {
                 std::cout << "success" << std::endl;
-                return node;
+                //return node;
             }
+        }
 
-            return nullptr;
+        template <class Archive>
+        void serialize(Archive& ar, const unsigned int version) {
+            ar & lrTable;
         }
 };
 
