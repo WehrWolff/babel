@@ -22,6 +22,8 @@
 *.out
 *.app
 
+.DS_Store
+
 # User-specific files
 CMakeUserPresets.json
 # CMakeCache.txt
