@@ -73,51 +73,12 @@ class Lexer {
 
         Position pos;
         char current_char;
-                
-        /*const std::string linechange = "\n";
-        std::string ignore = " \t";
-        std::string line_comment = "~";
-        std::string block_comment = "===";
-        std::list<std::string> literals;
-        std::map<std::string, std::string> keywords;*/
 
     public:
-        Lexer (std::string _file_name, std::string _text) {
-            file_name = _file_name;
-            text = _text;
-            pos = Position(0, -1, -1, _file_name, _text);
+        Lexer (std::string file_name, std::list<std::pair<std::string, std::string>> token_specs) : file_name(file_name), token_specs(token_specs) {
+            //pos = Position(0, -1, -1, file_name, text);
             current_char = (char) 0;
             advance();
-        }
-        /*
-        void setIgnore (std::string _ignore) {
-            ignore = _ignore;
-        }
-
-        void setLineComment (std::string _line_comment) {
-            line_comment = _line_comment;
-        }
-
-        void setBlockComment (std::string _block_comment) {
-            block_comment = _block_comment;
-        }
-        
-        void setKeywords (std::map<std::string, std::string> _keywords) {
-            keywords = _keywords;
-        }
-
-        void setLiterals (std::list<std::string> _literals) {
-            for (std::string literal : _literals) {
-                if (literal.size() != 1) {
-                    throw std::invalid_argument("literals must be of size 1");
-                }
-            }
-            literals = _literals;
-        }
-        */
-        
-        void setSpecs (std::list<std::pair<std::string, std::string>> _specs) {
-            token_specs = _specs;
         }
 
         void advance () {
@@ -125,9 +86,8 @@ class Lexer {
             current_char = pos.getInd() < text.size() ? text[pos.getInd()] : (char) 0;
         }
 
-        std::list<Token> tokenize() {
+        std::list<Token> tokenize(std::string input_stream) const {
             std::list<Token> tokens;
-            std::string input_stream = text;
             
             while (!input_stream.empty()) {
                 bool matched = false;

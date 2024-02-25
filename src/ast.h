@@ -1,3 +1,14 @@
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Verifier.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -5,7 +16,7 @@
 // Base class for all expression node
 class BaseAST {
     public:
-        virtual ~AST() = default;
+        virtual ~BaseAST() = default;
         virtual Value *codegen() = 0;
 };
 
@@ -14,7 +25,7 @@ class VariableAST : public BaseAST {
     const std::string Name;
 
     public:
-        VariableAST (const std::string &Name) : Name(Name) {}
+        explicit VariableAST (const std::string &Name) : Name(Name) {}
         Value *codegen() override;
 };
 
@@ -23,7 +34,7 @@ class IntegerAST : public BaseAST {
     const int Val;
 
     public:
-        IntegerAST (int Val) : Val(Val) {}
+        explicit IntegerAST (int Val) : Val(Val) {}
         Value *codegen() override;
 };
 
@@ -32,7 +43,7 @@ class FloatingPointAST : public BaseAST {
     const double Val;
 
     public:
-        FloatingPointAST (double Val) : Val(Val) {}
+        explicit FloatingPointAST (double Val) : Val(Val) {}
         Value *codegen() override;
 };
 
@@ -52,7 +63,7 @@ class TaskCallAST : public BaseAST {
     std::vector<std::unique_ptr<BaseAST>> Args;
 
     public:
-        TaskCallAST (const std::string callsTo&, std::vector<std::unique_ptr<BaseAST>> Args) : callsTo(callsTo), Args(std::move(Args)) {}
+        TaskCallAST (const std::string &callsTo, std::vector<std::unique_ptr<BaseAST>> Args) : callsTo(callsTo), Args(std::move(Args)) {}
         Value *codegen() override;
 };
 
@@ -62,7 +73,7 @@ class TaskHeaderAST : public BaseAST {
     std::vector<std::unique_ptr<BaseAST>> Args;
 
     public:
-        TaskHeaderAST (const std::string Name&, std::vector<std::unique_ptr<BaseAST>> Args) : Name(Name), Args(std::move(Args)) {}
+        TaskHeaderAST (const std::string &Name, std::vector<std::unique_ptr<BaseAST>> Args) : Name(Name), Args(std::move(Args)) {}
         Function *codegen() override;
 };
 
@@ -106,13 +117,13 @@ Value *BinaryOperatorAST::codegen() {
     if (!left || !right) return nullptr;
 
     switch (Op) {
-        case '+':
+        case "+":
             return Builder->CreateAdd(left, right, "addtmp");
-        case '-':
+        case "-":
             return Builder->CreateSub(left, right, "subtmp");
-        case '*':
+        case "*":
             return Builder->CreateMul(left, right, "multmp");
-        case '/':
+        case "/":
             return Builder->CreateSDiv(left, right, "divtmp");
         default:
             return LogError("Invalid binary operator");
