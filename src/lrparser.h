@@ -2,6 +2,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
 #include <boost/serialization/map.hpp>
 #include <boost/serialization/list.hpp>
 #include <boost/serialization/string.hpp>
@@ -68,40 +70,7 @@ public:
 // Define a macro to create the exception with file and line
 #define SyntaxError(msg) throw SyntaxError(msg, __FILE__, __LINE__)
 
-typedef void (*standalone_function_t)();
-
-/* class NonTerminal {
-    private:
-        const std::string name;
-        std::map<std::string, standalone_function_t> mapping;
-
-    public:
-        NonTerminal(std::string name, std::map<std::string, std::string> mapping) : name(name), mapping(mapping) {}
-
-        std::string getName () const {
-            return name;
-        }
-
-        std::map<std::string, standalone_function_t> getMapping () {
-            return mapping;
-        }
-
-        std::list<std::string> getMappedStrings () {
-            std::list<std::string> key;
-            for(std::map<std::string, standalone_function_t>::iterator it = mapping.begin(); it != mapping.end(); ++it) {
-                key.push_back(it->first);           
-            }
-            return key;
-        }
-
-        void trigger(std::string function) {
-            auto x = mapping.find(function);
-            
-            if (x != mapping.end()) {
-                result = x -> second(); // Call the stored function directly
-            }
-        }
-}; */
+using standalone_function_t = void (*)();
 
 const std::string EPSILON = "''";
 
@@ -109,11 +78,11 @@ class Rule;
 
 class Grammar {
     private:
-        void initializeRulesAndAlphabetAndNonterminals (std::string text);
+        void initializeRulesAndAlphabetAndNonterminals (const std::string& text);
 
         void initializeAlphabetAndTerminals ();
 
-        bool collectDevelopmentFirsts(std::list<std::string>& development, std::list<std::string>& nonterminalFirsts);
+        bool collectDevelopmentFirsts(const std::list<std::string>& development, std::list<std::string>& nonterminalFirsts);
 
         void initializeFirsts ();
 
@@ -137,13 +106,13 @@ class Grammar {
             initializeFollows();
         }
 
-        std::list<Rule> getRulesForNonterminal(std::string nonterminal);
+        std::list<Rule> getRulesForNonterminal(const std::string& nonterminal) const;
 
-        std::list<std::string> getSequenceFirsts(std::list<std::string> sequence) {
+        std::list<std::string> getSequenceFirsts(const std::list<std::string>& sequence) const {
             std::list<std::string> result = {};
             bool epsilonInSymbolFirsts = true;
 
-            for (std::string& symbol : sequence) { //potentially mark const
+            for (const std::string& symbol : sequence) { //potentially mark const
                 epsilonInSymbolFirsts = false;
 
                 if (std::find(terminals.begin(), terminals.end(), symbol) != terminals.end()) {
@@ -152,7 +121,7 @@ class Grammar {
                     break;
                 }
                 
-                for (std::string& first : firsts.at(symbol)) { //potentially mark const
+                for (const std::string& first : firsts.at(symbol)) { //potentially mark const
                     epsilonInSymbolFirsts |= first == EPSILON;
                     addUnique(first, result);
                 }
@@ -168,7 +137,7 @@ class Grammar {
         }
 
         template <class Archive>
-        void serialize(Archive& ar, const unsigned int version) {
+        void serialize(Archive& ar, const unsigned int /* version */) {
             ar & alphabet;
             ar & nonterminals;
             ar & terminals;
@@ -177,65 +146,19 @@ class Grammar {
             ar & firsts;
             ar & follows;
             ar & axiom;
-        }
-
-        /* bool validate(std::list symbols, Token nextTok) {
-            std::string token_type = nextTok.getType();
-            std::string grammarQuery;
-            for (auto symbol : symbols) {
-                std::string name = typeid(symbol) == typeid(Token) ? symbol.getType() : symbol.getName();                
-                grammarQuery.append(name + ' ');
-            }
-            grammarQuery.append(token_type);
-
-            for (NonTerminal rule : rules) {
-                for (std::string s : rule.getMappedStrings()) {
-                    if (s.rfind(grammarQuery, 0) == 0) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        void reduce(std::stack symbols) {    
-            std::string grammarQuery;
-            for (auto symbol : symbols) {
-                std::string name = typeid(symbol) == typeid(Token) ? symbol.getType() : symbol.getName();
-                grammarQuery.append(name + ' ');
-            }
-            grammarQuery.pop_back();
-
-            for (NonTerminal rule : rules) {
-                for (std::string s : rule.getMappedStrings()) {
-                    if (grammarQuery.find(s) != std::string::npos) {
-                        NonTerminal reduced = new NonTerminal(rule.getName(), nullptr);
-                        int reductions = std::ranges::count(s, ' ') + 1;
-                        while (reductions != 0) {
-                            symbols.pop();
-                            reductions--;
-                        }
-                        symbols.push(reduced);
-                    }
-                }
-            }
-            // we know that we tried to shift tokens before reduce which didnt work
-            // we know that none of our grammar rules matches the symbol stack
-            // therefor the syntax isnt valid
-            throw SyntaxError("");
-        } */
+        }        
 };
 
 class Rule {
     public:
-        Grammar grammar;
+        const Grammar* grammar;
         int index;
         std::string nonterminal;
         std::list<std::string> pattern;
         std::list<std::string> development;
         
         Rule() = default;
-        Rule(Grammar& grammar, const std::string& text) : grammar(grammar), index(static_cast<int>(grammar.rules.size()) ) {
+        Rule(const Grammar* grammar, const std::string& text) : grammar(grammar), index(static_cast<int>(grammar->rules.size()) ) {
             std::list<std::string> split = splitString(text, "->");
             nonterminal = boost::trim_copy(split.front());
             pattern = trimElements(splitString(nonterminal, " "));
@@ -272,7 +195,7 @@ class Rule {
         }
 
         template <class Archive>
-        void serialize(Archive& ar, const unsigned int version) {
+        void serialize(Archive& ar, const unsigned int /* version */) {
             ar & grammar;
             ar & index;
             ar & nonterminal;
@@ -281,15 +204,15 @@ class Rule {
         }
 };
 
-void Grammar::initializeRulesAndAlphabetAndNonterminals (std::string text) {
+void Grammar::initializeRulesAndAlphabetAndNonterminals (const std::string& text) {
     std::list<std::string> lines = splitString(text, "\n");
 
-    for (std::string& _ : lines) { //potentially mark const
+    for (const std::string& _ : lines) { //potentially mark const
         std::string line = boost::trim_copy(_);
 
         if (line != "") {
             // should use unique_pointr here later
-            Rule rule(*this, line);
+            Rule rule(this, line);
             rules.push_back(rule);
 
             if (axiom.empty()) {
@@ -303,9 +226,9 @@ void Grammar::initializeRulesAndAlphabetAndNonterminals (std::string text) {
 }
 
 void Grammar::initializeAlphabetAndTerminals () {
-    for (Rule& rule : rules) { //potentially mark const
-        for (std::string& symbol : rule.development) { //potentially mark const
-            if (symbol != EPSILON && std::find(nonterminals.begin(), nonterminals.end(), symbol) == nonterminals.end()) {
+    for (const Rule& rule : rules) { //potentially mark const
+        for (const std::string& symbol : rule.development) { //potentially mark const
+            if (symbol != EPSILON && symbol != "$" && std::find(nonterminals.begin(), nonterminals.end(), symbol) == nonterminals.end()) {
                 addUnique(symbol, alphabet);
                 addUnique(symbol, terminals);
             }
@@ -313,11 +236,11 @@ void Grammar::initializeAlphabetAndTerminals () {
     }
 }
 
-bool Grammar::collectDevelopmentFirsts(std::list<std::string>& development, std::list<std::string>& nonterminalFirsts) {
+bool Grammar::collectDevelopmentFirsts(const std::list<std::string>& development, std::list<std::string>& nonterminalFirsts) {
     bool result = false;
     bool epsilonInSymbolFirsts = true;
     
-    for (std::string& symbol : development) { //potentially mark const
+    for (const std::string& symbol : development) { //potentially mark const
         epsilonInSymbolFirsts = false;
 
         if (isElement(symbol, terminals)) {
@@ -327,7 +250,7 @@ bool Grammar::collectDevelopmentFirsts(std::list<std::string>& development, std:
         }
 
         if (firsts.find(symbol) != firsts.end()) {
-            for (std::string& first : firsts.at(symbol)) { //potentially mark const
+            for (const std::string& first : firsts.at(symbol)) { //potentially mark const
                 epsilonInSymbolFirsts |= first == EPSILON;
                 result |= addUnique(boost::trim_copy(first), nonterminalFirsts);
             }
@@ -368,7 +291,7 @@ void Grammar::initializeFollows() {
     do {
         notDone = false;
         
-        for (Rule& rule : rules) {
+        for (const Rule& rule : rules) {
             if (rule == rules.front()) {
                 std::list<std::string> nonterminalFollows = getOrCreateArray(follows, rule.nonterminal);
                 notDone |= addUnique<std::string>("$", nonterminalFollows);
@@ -388,12 +311,11 @@ void Grammar::initializeFollows() {
                     
                     std::list<std::string> afterSymbolFirsts = getSequenceFirsts(sliced);
 
-                    for (std::string& first : afterSymbolFirsts) { //potentially mark const
+                    for (const std::string& first : afterSymbolFirsts) { //potentially mark const
                         if (first == EPSILON) {
-                            //std::list<std::string> nonterminalFollows = follows.at(rule.nonterminal);
                             std::list<std::string> nonterminalFollows = follows[rule.nonterminal];
 
-                            for (std::string& _ : nonterminalFollows) { //potentially mark const
+                            for (const std::string& _ : nonterminalFollows) { //potentially mark const
                                 notDone |= addUnique(_, symbolFollows);
                             }
                         } else {
@@ -407,7 +329,7 @@ void Grammar::initializeFollows() {
     } while (notDone);
 }
 
-std::list<Rule> Grammar::getRulesForNonterminal(std::string nonterminal) {
+std::list<Rule> Grammar::getRulesForNonterminal(const std::string& nonterminal) const {
     std::list<Rule> result = {};
 
     for (Rule rule : rules) {
@@ -425,17 +347,17 @@ class UnifiedItem {
         int dotIndex;
         std::list<std::string> lookAheads;
 
-        UnifiedItem(Rule rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {          
+        UnifiedItem(const Rule& rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {
             if (rule.index == 0) {
-                lookAheads.push_back("$");
+                lookAheads.emplace_back("$");
             }
         }
 
-        std::list<UnifiedItem> newItemsFromSymbolAfterDot() {
+        std::list<UnifiedItem> newItemsFromSymbolAfterDot() const {
             std::list<UnifiedItem> result = {};
             std::string ntR = getElement(dotIndex, rule.development);
             
-            std::list<Rule> nonterminalRules = rule.grammar.getRulesForNonterminal(ntR);
+            std::list<Rule> nonterminalRules = rule.grammar->getRulesForNonterminal(ntR);
 
             for (Rule ntRule : nonterminalRules) {
                 addUnique(UnifiedItem(ntRule, 0) , result);
@@ -445,9 +367,9 @@ class UnifiedItem {
 
             std::list<std::string> newLookAheads = {};
             bool epsilonPresent = false;
-            std::list<std::string> firstsAfterSymbolAfterDot = rule.grammar.getSequenceFirsts(slice(rule.development, dotIndex + 1));
+            std::list<std::string> firstsAfterSymbolAfterDot = rule.grammar->getSequenceFirsts(slice(rule.development, dotIndex + 1));
 
-            for (std::string& first : firstsAfterSymbolAfterDot) {
+            for (const std::string& first : firstsAfterSymbolAfterDot) {
                 if (EPSILON == first) {
                     epsilonPresent = true;
                 } else {
@@ -456,7 +378,7 @@ class UnifiedItem {
             }
 
             if (epsilonPresent) {
-                for (std::string& _ : lookAheads) {
+                for (const std::string& _ : lookAheads) {
                     addUnique(_, newLookAheads);
                 }
             }
@@ -482,12 +404,12 @@ class UnifiedItem {
             return result;
         }
 
-        bool addUniqueTo(std::list<UnifiedItem>& items) {
+        bool addUniqueTo(std::list<UnifiedItem>& items) const {
             bool result = false;
 
             for (UnifiedItem& item : items) {
                 if (superEquals(item)) {
-                    for (std::string& _ : lookAheads) {
+                    for (const std::string& _ : lookAheads) {
                         result |= addUnique(_, item.lookAheads);
                     }
 
@@ -507,15 +429,6 @@ class UnifiedItem {
         bool operator==(const UnifiedItem& that) const {
             return superEquals(that) && includeEachOther(lookAheads, that.lookAheads);
         }
-        
-        /* friend std::ostream& operator<<(std::ostream& os, const UnifiedItem& item) {
-            os << "[";
-            return rule.nonterminal + " -> " + rule.development.slice(0, this.dotIndex).join(' ') + '.' +
-				(isElement(EPSILON, this.rule.development) ? '' : this.rule.development.slice(this.dotIndex).join(' '));
-            
-            return os;
-            return '[' + zuper.toString() + ', ' + this.lookAheads.join('/') + ']';
-        } */
 };
 
 class Kernel {
@@ -527,7 +440,7 @@ class Kernel {
         std::list<std::string> keys;
         
         //maybe initialize with grammar
-        Kernel (int index, std::list<UnifiedItem> items) : index(index), items(items), closure(slice(items, 0)) {}
+        Kernel (int index, const std::list<UnifiedItem>& items) : index(index), items(items), closure(slice(items, 0)) {}
 
         bool operator==(const Kernel& that) const {
             return includeEachOther(items, that.items);
@@ -546,8 +459,6 @@ class LRClosureTable {
             kernels.push_back(k);            
             
             for (auto it = kernels.begin(); it != kernels.end();) {
-                //Kernel& kernel = getUpdateableElement(i, kernels);
-                //Kernel& kernel = *std::next(kernels.begin(), i);
                 Kernel& kernel = *it;
 
                 updateClosure(kernel);
@@ -561,20 +472,17 @@ class LRClosureTable {
             }
         }
 
-        void updateClosure(Kernel& kernel) {
-            for (UnifiedItem& closure : kernel.closure) {
-            //for (size_t i = 0; i < kernel.closure.size(); i++) {
-                //cout << "newItemsFromSymbolAfterDot" << endl;
+        void updateClosure(Kernel& kernel) const {
+            for (const UnifiedItem& closure : kernel.closure) {
                 std::list<UnifiedItem> newItemsFromSymbolAfterDot = closure.newItemsFromSymbolAfterDot();
-                //std::list<UnifiedItem> newItemsFromSymbolAfterDot = getElement(i, kernel.closure).newItemsFromSymbolAfterDot();
-                for (UnifiedItem& item : newItemsFromSymbolAfterDot) {
-                    //cout << kernel.closure.size() << endl;
+                
+                for (const UnifiedItem& item : newItemsFromSymbolAfterDot) {
                     item.addUniqueTo(kernel.closure);
-                }    
+                }
             }
         }
 
-        bool addGotos(Kernel& kernel, std::list<Kernel>& kernels) {
+        bool addGotos(Kernel& kernel, std::list<Kernel>& kernels) const {
             bool lookAheadsPropagated = false;
             std::map<std::string, std::list<UnifiedItem>> newKernels;
 
@@ -599,7 +507,7 @@ class LRClosureTable {
                     kernels.push_back(newKernel);
                     targetKernelIndex = newKernel.index;
                 } else {
-                    for (UnifiedItem& item : newKernel.items) {
+                    for (const UnifiedItem& item : newKernel.items) {
                         std::list<UnifiedItem>& items = getUpdateableElement(targetKernelIndex, kernels).items;
                         lookAheadsPropagated |= item.addUniqueTo(items);
                     }
@@ -625,7 +533,7 @@ class LRAction {
         }
 
         template <class Archive>
-        void serialize(Archive& ar, const unsigned int version) {
+        void serialize(Archive& ar, const unsigned int /* version */) {
             ar & actionType;
             ar & actionValue;
         }
@@ -640,7 +548,7 @@ class State {
         explicit State(std::list<State> const& states) : index(static_cast<int>(states.size())) {}
 
         template <class Archive>
-        void serialize(Archive& ar, const unsigned int version) {
+        void serialize(Archive& ar, const unsigned int /* version */) {
             ar & index;
             ar & mapping;
         }
@@ -652,7 +560,7 @@ class LRTable {
         std::list<State> states = {};
 
         LRTable() = default;
-        explicit LRTable(LRClosureTable& closureTable) : grammar(closureTable.grammar) {
+        explicit LRTable(const LRClosureTable& closureTable) : grammar(closureTable.grammar) {
             for (const Kernel& kernel : closureTable.kernels) {
                 State state(states);
 
@@ -674,13 +582,13 @@ class LRTable {
         }
 
         template <class Archive>
-        void serialize(Archive& ar, const unsigned int version) {
+        void serialize(Archive& ar, const unsigned int /* version */) {
             ar & grammar;
             ar & states;
         }
 };
 
-std::optional<LRAction> chooseActionElement(State& state, std::string token) {
+std::optional<LRAction> chooseActionElement(State& state, const std::string& token) {
     if (state.mapping.find(token) == state.mapping.end()) {
         return std::nullopt;
     }
@@ -694,7 +602,7 @@ class Tree {
         std::list<std::string> children;
 
         Tree() = default;
-        explicit Tree(std::string value) : value(value) {}
+        explicit Tree(const std::string& value) : value(value) {}
 
         friend std::ostream& operator<<(std::ostream& os, const Tree& tree) {
             for (const std::string& current : tree.children) {
@@ -703,7 +611,7 @@ class Tree {
             return os;
         }
 
-        std::string toString() {
+        std::string toString() const {
             return value;
         }
 };
@@ -714,9 +622,9 @@ class Parser {
 
     public:
         Parser() = default;
-        explicit Parser(LRTable lrTable) : lrTable(lrTable) {}
+        explicit Parser(const LRTable& lrTable) : lrTable(lrTable) {}
 
-        std::string retrieveMessage(State state, std::string token) const {
+        std::string retrieveMessage(const State& state, const std::string& token) const {
             std::map<std::string, LRAction> m = state.mapping;
             
             std::list<std::string> expected;
@@ -788,7 +696,7 @@ class Parser {
         }
 
         template <class Archive>
-        void serialize(Archive& ar, const unsigned int version) {
+        void serialize(Archive& ar, const unsigned int /* version */) {
             ar & lrTable;
         }
 };

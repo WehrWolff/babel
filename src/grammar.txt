@@ -11,6 +11,8 @@ statement           : simple_stmt_list
 
 simple_stmt_list    : simple_stmt NEWLINE
                     | simple_stmt SEMICOLON NEWLINE
+                    | simple_stmt
+                    | simple_stmt SEMICOLON
                     | simple_stmt SEMICOLON simple_stmt_list
 
 simple_stmt         : PASS
@@ -167,13 +169,16 @@ primary             : primary DOT VAR
 
 function_call       : VAR LPAREN RPAREN
                     | VAR LPAREN params RPAREN
+                    | primary DOT function_call
 
 class_construction  : NEW VAR LPAREN RPAREN
                     | NEW VAR LPAREN params RPAREN
 
-params              : VAR EQUALS expression
+param               : VAR EQUALS expression
                     | expression
-                    | params COMMA params
+
+params              : param COMMA params
+                    | param
 
 atom                : STRING
                     | CHAR

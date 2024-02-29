@@ -42,7 +42,6 @@ int indexOf(T element, const std::list<T>& list) {
 template <typename T>
 bool includes(std::list<T> list1, std::list<T> list2) {
     for (const auto& elmnt : list1) {
-        //if (findIndex(list2, elmnt) == list2.end()){
         if (indexOf(elmnt, list2) < 0){
             return false;
         }
@@ -55,22 +54,6 @@ template <typename T>
 bool includeEachOther(std::list<T> list1, std::list<T> list2) {
     return includes(list1, list2) && includes(list2, list1);
 }
-
-/* template <typename T>
-bool includesUsingEquals(std::list<T> list1, std::list<T> list2) {
-    for (const auto& elmnt : list1) {
-        if (indexOfUsingEquals(elmnt, list2)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-template <typename T>
-bool includeEachOtherUsingEquals(std::list<T> list1, std::list<T> list2) {
-    return includesUsingEquals(list1, list2) && includesUsingEquals(list2, list1);
-} */
 
 // leave for clarity, replace later
 template <typename T>
@@ -120,18 +103,6 @@ bool addUnique(T elmnt, std::list<T>& list) {
 
     return false;
 }
-
-
-/* template <typename T>
-bool emplaceUnique(T elmnt, std::list<T>& list) {
-    //if (!isElement(elmnt, list)) {
-        list.push_back(elmnt);
-
-        return true;
-    //}
-
-    return false;
-}*/
 
 template <typename T>
 T& getUpdateableElement(int index, std::list<T>& list) {
