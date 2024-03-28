@@ -50,7 +50,8 @@ class FloatingPointAST : public BaseAST {
 // class for when binary operators are used
 class BinaryOperatorAST : public BaseAST {
     const std::string Op;
-    std::unique_ptr<BaseAST> LHS, RHS;
+    std::unique_ptr<BaseAST> LHS;
+    std::unique_ptr<BaseAST> RHS;
 
     public:
         BinaryOperatorAST (std::string Op, std::unique_ptr<BaseAST> LHS, std::unique_ptr<BaseAST> RHS) : Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
@@ -173,7 +174,7 @@ Function TaskAST::codegen() {
         NamedValues[std::string(arg.getName())] = &Arg;
     }
 
-    if (Value *RetVal = Body->codegen()) {
+    if ((Value *RetVal = Body->codegen())) {
         Builder->CreateRet(RetVal);
         verifyFunction(*TheFunction);
         return TheFunction;

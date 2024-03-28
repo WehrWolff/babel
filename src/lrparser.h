@@ -537,6 +537,11 @@ class LRAction {
             ar & actionType;
             ar & actionValue;
         }
+
+        friend std::ostream& operator<<(std::ostream& os, const LRAction& lrAction) {
+            os << lrAction.toString();
+            return os;
+        }
 };
 
 class State {
@@ -552,6 +557,12 @@ class State {
             ar & index;
             ar & mapping;
         }
+
+        friend std::ostream& operator<<(std::ostream& os, const State& state) {
+            os << state.index << ": " << state.mapping;
+            return os;
+        }
+        
 };
 
 class LRTable {
@@ -596,31 +607,40 @@ std::optional<LRAction> chooseActionElement(State& state, const std::string& tok
     return state.mapping.at(token);
 }
 
-class Tree {
-    public:
-        std::string value;
-        std::list<std::string> children;
+struct TreeNode {
+    std::string name;
+    std::optional<std::string> data;
+    std::list<TreeNode> children;
 
-        Tree() = default;
-        explicit Tree(const std::string& value) : value(value) {}
+    friend std::ostream& operator<<(std::ostream& os, const TreeNode& node) {
+        std::stack<std::pair<const TreeNode*, int>> nodeStack;
+        nodeStack.push(std::make_pair(&node, 0));
 
-        friend std::ostream& operator<<(std::ostream& os, const Tree& tree) {
-            for (const std::string& current : tree.children) {
-                os << "(" << current << "), ";
+        while (!nodeStack.empty()) {
+            const TreeNode* currentNode = nodeStack.top().first;
+            int depth = nodeStack.top().second;
+            nodeStack.pop();
+
+            // Print the current node
+            for (int i = 0; i < depth; ++i) {
+                os << "  ";
             }
-            return os;
+            if(depth > 0) os << "|_ ";
+            os << currentNode->name << std::endl;
+
+            // Push children onto the stack in reverse order
+            for (auto childIter = currentNode->children.rbegin(); childIter != currentNode->children.rend(); ++childIter) {
+                nodeStack.push(std::make_pair(&(*childIter), depth + 1));
+            }
         }
 
-        std::string toString() const {
-            return value;
-        }
+        return os;
+    }
 };
 
 class Parser {
-    private:        
-        LRTable lrTable;
-
     public:
+        LRTable lrTable;
         Parser() = default;
         explicit Parser(const LRTable& lrTable) : lrTable(lrTable) {}
 
@@ -648,9 +668,9 @@ class Parser {
             return std::regex_replace(msg, std::regex("'\\$'"), "EOF");
         }
 
-        void parse(std::list<Token> tokens) const {
+        TreeNode parse(std::list<Token> tokens) const {
             tokens.push_back(Token("$", "$"));
-            std::stack<std::string> symbolStack;
+            std::stack<TreeNode> nodeStack;
             std::stack<int> stateStack;
             stateStack.push(0);
             int tokenIndex = 0;
@@ -658,32 +678,33 @@ class Parser {
             std::string token_type = token.getType();
             State state = *std::next(lrTable.states.begin(), stateStack.top());
             std::optional<LRAction> actionElement = chooseActionElement(state, token_type);
-            //Tree node;
 
             while (actionElement != std::nullopt && actionElement.value().toString() != "r0") {
                 if (actionElement.value().actionType == "s") {
-                    symbolStack.push((*std::next(tokens.begin(), tokenIndex++)).getType());
+                    nodeStack.push(TreeNode{(*std::next(tokens.begin(), tokenIndex)).getType(), std::optional((*std::next(tokens.begin(), tokenIndex)).getValue())});
                     stateStack.push(actionElement.value().actionValue);
+                    tokenIndex++;
                 } else if (actionElement.value().actionType == "r") {
                     int ruleIndex = actionElement.value().actionValue;
                     Rule rule = *std::next(lrTable.grammar.rules.begin(), ruleIndex);
                     int removeCount = isElement(EPSILON, rule.development) ? 0 : rule.development.size();
 
-                    Tree node(rule.nonterminal);
+                    TreeNode newNode;
+                    newNode.name = rule.nonterminal;
 
                     for (int i = 0; i < removeCount; i++) {
-                        node.children.push_back(symbolStack.top());
-                        symbolStack.pop();
+                        newNode.children.push_front(nodeStack.top());
+                        nodeStack.pop();
                         stateStack.pop();
                     }
 
-                    symbolStack.push(rule.nonterminal);
+                    nodeStack.push(newNode);
                 } else {
                     stateStack.push(actionElement.value().actionValue);
                 }
                 
                 state = *std::next(lrTable.states.begin(), stateStack.top());
-                token_type = (symbolStack.size() + stateStack.size()) % 2 == 0 ? symbolStack.top() : (*std::next(tokens.begin(), tokenIndex)).getType();
+                token_type = (nodeStack.size() + stateStack.size()) % 2 == 0 ? nodeStack.top().name : (*std::next(tokens.begin(), tokenIndex)).getType();
                 actionElement = chooseActionElement(state, token_type);
             }
 
@@ -691,8 +712,9 @@ class Parser {
                 std::cout << "SyntaxError: " << retrieveMessage(state, (*std::next(tokens.begin(), tokenIndex)).getValue()) << std::endl;
             } else if (actionElement.value().toString() == "r0") {
                 std::cout << "success" << std::endl;
-                //return node;
             }
+
+            return TreeNode{lrTable.grammar.axiom, std::nullopt, {nodeStack.top()}};
         }
 
         template <class Archive>
