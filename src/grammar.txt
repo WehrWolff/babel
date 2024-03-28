@@ -9,10 +9,10 @@ statement_list      : statement
 statement           : simple_stmt_list
                     | compound_stmt
 
-simple_stmt_list    : simple_stmt NEWLINE
-                    | simple_stmt SEMICOLON NEWLINE
-                    | simple_stmt
+simple_stmt_list    : simple_stmt
                     | simple_stmt SEMICOLON
+                    | simple_stmt NEWLINE
+                    | simple_stmt SEMICOLON NEWLINE
                     | simple_stmt SEMICOLON simple_stmt_list
 
 simple_stmt         : PASS

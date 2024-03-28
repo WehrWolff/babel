@@ -1,5 +1,6 @@
 //#include "lexer.h"
 #include "lrparser.h"
+#include "colormod.h"
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/filter/zlib.hpp>
 #include <fstream>
@@ -13,7 +14,7 @@
 
 void run(const Lexer& lexer, const Parser& parser, const std::string& text) {
     std::list<Token> tokens = lexer.tokenize(text);
-    parser.parse(tokens);
+    std::cout << parser.parse(tokens) << std::endl;
 }
 
 void saveParserData(const Parser& parser, const std::filesystem::path& filename) {
@@ -26,7 +27,7 @@ Parser loadParserData(const std::filesystem::path& project_root) {
     Parser parser;
     std::filesystem::path dataPath = project_root / "assets" / "parser.dat";
 
-    if (auto ifs = std::ifstream(dataPath, std::ios::binary)) {
+    if (auto ifs = std::ifstream(dataPath, std::ios::binary)/*; false*/) {
         boost::archive::binary_iarchive ar(ifs);
         ar >> parser;
     } else {
@@ -139,11 +140,18 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
 int main(int argc, char* argv[]) {
     Lexer lexer = setupModuleAndLexer("repl");    
     const std::filesystem::path ROOT_DIR = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path().parent_path();
-    Parser parser = loadParserData(ROOT_DIR);    
+    Parser parser = loadParserData(ROOT_DIR);
+
+    printf(" _____       _          _   |  Documentation: https://github.com/WehrWolff/babel/wiki\n");
+    printf("| ___ \\     | |        | |  |  \n");
+    printf("| |_/ / __ _| |__   ___| |  |  Use bemo for managing packages\n");
+    printf("| ___ \\/ _` | '_ \\ / _ \\ |  |  \n");
+    printf("| |_/ / (_| | |_) |  __/ |  |  Version UNRELEASED (Mar 28, 2024)\n");
+    printf("\\____/ \\__,_|_.__/ \\___|_|  |  https://github.com/WehrWolff/babel\n\n");
 
     while (true) {
         std::string text;
-        std::cout << "babel> ";
+        std::cout << color::rize("babel> ", color::BOLD, color::MAGENTA);
         getline(std::cin, text);
         
         if (text == "exit()") break;
