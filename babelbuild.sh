@@ -1,7 +1,14 @@
 #!/bin/bash
 
-# Verify conan is installed and make sure a default profile is generated
-pip install conan
+# Check if Conan is installed
+if ! command -v conan &> /dev/null; then
+    if ! pip install conan &> /dev/null; then
+        pipx install conan && pipx ensurepath
+        export PATH=$PATH:$HOME/.local/bin
+    fi
+fi
+
+# Make sure a default profile is generated
 conan profile detect || true
 
 # Make sure packages are installed
@@ -9,12 +16,13 @@ conan install . --output-folder=./build --build=missing --settings=compiler.cpps
 
 # Copy required files
 cp src/grammar.txt build/grammar.txt
+mkdir build/assets && cp assets/parser.dat build/assets/parser.dat
 
 # Build commands
 cd build
 
 cmake .. -DCMAKE_TOOLCHAIN_FILE=./build/build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-make
+cmake --build .
 
 # Run in shell
 # ./babel
