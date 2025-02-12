@@ -40,7 +40,8 @@ add_test(NAME BabelTests COMMAND babel_tests)
 
 add_custom_target(coverage
     COMMAND ${CMAKE_COMMAND} -E remove coverage.info    
-    COMMAND lcov --capture --directory . --output-file coverage.info --ignore-errors inconsistent
+    # COMMAND lcov --capture --directory . --output-file coverage.info --ignore-errors inconsistent
+    COMMAND lcov --capture --directory . --output-file coverage.info --ignore-errors mismatch
     COMMAND lcov --remove coverage.info '/usr/*' --output-file coverage.info
     COMMAND lcov --list coverage.info
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
