@@ -9,7 +9,8 @@ if ! command -v conan &> /dev/null; then
 fi
 
 # Make sure a default profile is generated
-conan profile detect || true
+conan profile detect --exist-ok
+conan profile show
 
 # Make sure packages are installed
 conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=Release

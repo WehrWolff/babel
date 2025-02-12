@@ -2,7 +2,8 @@
 
 :: Install conan
 python -m pip install conan
-conan profile detect || exit /b
+conan profile detect --exist-ok
+conan profile show
 
 :: Install packages
 conan install . --output-folder=.\build --build=missing --settings=compiler.cppstd=20 --settings=build_type=Release
