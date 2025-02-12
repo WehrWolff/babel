@@ -15,7 +15,7 @@ cd build
 
 :: Run cmake and make
 cmake .. -DCMAKE_TOOLCHAIN_FILE=.\build\build\Release\generators\conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-nmake
+cmake --build .
 
 :: Run in shell
 :: babel

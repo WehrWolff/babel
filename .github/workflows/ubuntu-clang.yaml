@@ -1,18 +1,12 @@
 # This starter workflow is for a CMake project running on multiple platforms. There is a different starter workflow if you just want a single platform.
 # See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-single-platform.yml
-name: CMake on multiple platforms
+name: CMake on ubuntu, clang
 
 on:
   push:
-<<<<<<< HEAD
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-=======
     branches: [ "action-config" ]
   pull_request:
     branches: [ "action-config" ]
->>>>>>> action-config
 
 jobs:
   build:
@@ -29,67 +23,19 @@ jobs:
       #
       # To add more build types (Release, Debug, RelWithDebInfo, etc.) customize the build_type list.
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest]
         build_type: [Release]
-        c_compiler: [gcc, clang, cl]
+        c_compiler: [clang]
         include:
-          - os: windows-latest
-            c_compiler: cl
-            cpp_compiler: cl
-            conan_compiler: msvc
-            compiler_version: 193
-            conan_toolchain_path: build/build/generators/conan_toolchain.cmake
-<<<<<<< HEAD
-=======
-          - os: windows-latest
+          - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
             conan_compiler: clang
             compiler_version: 15
-            conan_toolchain_path: build/build/generators/conan_toolchain.cmake
-            cmd: make coverage
->>>>>>> action-config
-          - os: ubuntu-latest
-            c_compiler: gcc
-            cpp_compiler: g++
-            conan_compiler: gcc
-<<<<<<< HEAD
-            compiler_version: 11
             libcxx: --settings=compiler.libcxx=libstdc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
-=======
-            compiler_version: 13
-            libcxx: --settings=compiler.libcxx=libstdc++11
-            conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
-            cmd: make coverage
->>>>>>> action-config
-          - os: ubuntu-latest
-            c_compiler: clang
-            cpp_compiler: clang++
-            conan_compiler: clang
-            compiler_version: 15
-<<<<<<< HEAD
-            libcxx: --settings=compiler.libcxx=libc++
-            conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
             cmd: sudo apt-get install libc++-dev
-=======
-            libcxx: --settings=compiler.libcxx=libstdc++11
-            conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
-            cmd: make coverage
->>>>>>> action-config
 #/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> /home/runner/.bashrc && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && brew install libcxx
-        exclude:
-          - os: windows-latest
-            c_compiler: gcc
-<<<<<<< HEAD
-          - os: windows-latest
-            c_compiler: clang
-=======
-          #- os: windows-latest
-          #  c_compiler: clang
->>>>>>> action-config
-          - os: ubuntu-latest
-            c_compiler: cl
 
     steps:
     - uses: actions/checkout@v3
@@ -103,10 +49,7 @@ jobs:
 
     - name: Manage Packages with Conan          
       run: |
-<<<<<<< HEAD
         ${{ matrix.cmd }}
-=======
->>>>>>> action-config
         pip install conan
         conan profile detect || true
         conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} ${{ matrix.libcxx }}
@@ -126,28 +69,13 @@ jobs:
 
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-<<<<<<< HEAD
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
-=======
-      # sudo apt-get install lcov
-      run: |        
-        cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
->>>>>>> action-config
 
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-<<<<<<< HEAD
       run: ctest --build-config ${{ matrix.build_type }}
-=======
-      
-      #ctest --build-config ${{ matrix.build_type }} --output-on-failure -fprofile-arcs -ftest-coverage
-      run: |
-        ctest --build-config ${{ matrix.build_type }} --output-on-failure --verbose CTEST_CUSTOM_PRE_TEST="CC='gcc -fprofile-arcs -ftest-coverage' CXX='g++ -fprofile-arcs -ftest-coverage'"
-        ${{ matrix.cmd }}
-      #cmake --build . --target coverage
->>>>>>> action-config
 
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v3
