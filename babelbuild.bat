@@ -15,7 +15,7 @@ copy src\grammar.txt build\grammar.txt
 cd build
 
 :: Run cmake and make
-cmake .. -DCMAKE_TOOLCHAIN_FILE=.\build\build\Release\generators\conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+cmake .. -DCMAKE_TOOLCHAIN_FILE=.\build\build\generators\conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
 cmake --build .
 
 :: Run in shell

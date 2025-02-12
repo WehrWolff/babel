@@ -31,19 +31,26 @@ target_link_libraries(babel_tests PRIVATE GTest::GTest GTest::Main)
 target_link_libraries(babel_tests PRIVATE ${Boost_LIBRARIES})
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    add_compile_options(-fprofile-arcs -ftest-coverage)
-    add_link_options(-lgcov)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
 endif()
 
 enable_testing()
 add_test(NAME BabelTests COMMAND babel_tests)
 
 add_custom_target(coverage
-    COMMAND ${CMAKE_COMMAND} -E remove coverage.info
-    COMMAND lcov --capture --directory . --output-file coverage.info
+    COMMAND ${CMAKE_COMMAND} -E remove coverage.info    
+    COMMAND lcov --capture --directory . --output-file coverage.info --ignore-errors inconsistent
     COMMAND lcov --remove coverage.info '/usr/*' --output-file coverage.info
     COMMAND lcov --list coverage.info
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    DEPENDS babel_tests
     COMMENT "Generating coverage information..."
+)
+
+add_custom_target(test_coverage
+    COMMAND ./babel_tests
+    COMMAND ${CMAKE_COMMAND} --build . --target coverage
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    DEPENDS babel_tests
+    COMMENT "Running tests..."
 )

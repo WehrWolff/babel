@@ -22,7 +22,7 @@ mkdir build/assets && cp assets/parser.dat build/assets/parser.dat
 # Build commands
 cd build
 
-cmake .. -DCMAKE_TOOLCHAIN_FILE=./build/build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+cmake .. -DCMAKE_TOOLCHAIN_FILE=./build/build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release #-DCMAKE_CXX_OUTPUT_EXTENSION_REPLACE=ON
 cmake --build .
 
 # Run in shell
