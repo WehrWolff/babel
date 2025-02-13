@@ -54,7 +54,7 @@ jobs:
             compiler_version: 15
             libcxx: --settings=compiler.libcxx=libstdc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
-            cmd: sudo apt-get install lcov libc++-dev
+            cmd: sudo apt-get install lcov
 
         exclude:
           - os: windows-latest
@@ -76,6 +76,7 @@ jobs:
 
     - name: Manage Packages with Conan          
       run: |
+        sudo apt-get install libc++-dev
         pip install conan
         conan profile detect
         conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} ${{ matrix.libcxx }}
@@ -109,6 +110,7 @@ jobs:
       run: |
         ctest --build-config ${{ matrix.build_type }} --output-on-failure --verbose CTEST_CUSTOM_PRE_TEST="CC='gcc -fprofile-arcs -ftest-coverage' CXX='g++ -fprofile-arcs -ftest-coverage'"
         ${{ matrix.cmd }}
+        lcov.exe --version
         cmake --build . --target coverage
       #make coverage
 
