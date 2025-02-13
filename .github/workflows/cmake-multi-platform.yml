@@ -41,7 +41,7 @@ jobs:
             cpp_compiler: g++
             conan_compiler: gcc
             compiler_version: 13
-            libcxx: --settings=compiler.libcxx=libstdc++11
+            #libcxx: --settings=compiler.libcxx=libstdc++11
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
             cmd: sudo apt-get install lcov
           - os: ubuntu-latest
@@ -49,7 +49,7 @@ jobs:
             cpp_compiler: clang++
             conan_compiler: clang
             compiler_version: 15
-            libcxx: --settings=compiler.libcxx=libstdc++
+            #libcxx: --settings=compiler.libcxx=libstdc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
             cmd: sudo apt-get install lcov
 
@@ -69,6 +69,7 @@ jobs:
       uses: crazy-max/ghaction-chocolatey@v3
       with:
         args: install lcov
+      run: choco install lcov
 
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
