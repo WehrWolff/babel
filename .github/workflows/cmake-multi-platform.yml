@@ -37,7 +37,8 @@ jobs:
             cmd: |
               Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iwr https://community.chocolatey.org/install.ps1 -UseBasicParsing | iex
               choco install lcov
-              set PATH=%PATH%;C:\ProgramData\chocolatey\lib\lcov\tools
+              [System.Environment]::SetEnvironmentVariable("PATH", "$env:PATH;C:\ProgramData\chocolatey\lib\lcov\tools", [System.EnvironmentVariableTarget]::Machine)
+            # set PATH=%PATH%;C:\ProgramData\chocolatey\lib\lcov\tools
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
