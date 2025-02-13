@@ -28,11 +28,13 @@ jobs:
         c_compiler: [gcc, clang, cl]
         include:
           - os: windows-latest
-            c_compiler: cl
-            cpp_compiler: cl
-            conan_compiler: msvc
-            compiler_version: 193
-            conan_toolchain_path: build/build/generators/conan_toolchain.cmake
+            c_compiler: msvc
+            cpp_compiler: msvc
+            #c_compiler: cl
+            #cpp_compiler: cl
+            #conan_compiler: msvc
+            #compiler_version: 193
+            #conan_toolchain_path: build/build/generators/conan_toolchain.cmake
             # @"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -InputFormat None -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))" && SET "PATH=%PATH%;%ALLUSERSPROFILE%\chocolatey\bin"
             cmd: |
               Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iwr https://community.chocolatey.org/install.ps1 -UseBasicParsing | iex
@@ -42,18 +44,18 @@ jobs:
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
-            conan_compiler: gcc
-            compiler_version: 13
-            libcxx: --settings=compiler.libcxx=libstdc++11
-            conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
+            #conan_compiler: gcc
+            #compiler_version: 13
+            #libcxx: --settings=compiler.libcxx=libstdc++
+            #conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
             cmd: sudo apt-get install lcov
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
-            conan_compiler: clang
-            compiler_version: 15
-            libcxx: --settings=compiler.libcxx=libc++
-            conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
+            #conan_compiler: clang
+            #compiler_version: 15
+            #libcxx: --settings=compiler.libcxx=libstdc++
+            #conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
             cmd: sudo apt-get install lcov
 
         exclude:
@@ -73,17 +75,17 @@ jobs:
       shell: bash
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+        echo "compiler-version=$(${{ matrix.c_compiler }} --version | head -n 1 | grep -oP '\d+\.\d+\.\d+' | cut -d. -f1)" >> "$GITHUB_OUTPUT"
+        echo "conan-toolchain-path=$(find ${{ github.workspace }} -name conan_toolchain.cmake)" >> "$GITHUB_OUTPUT"
 
-    - name: Clang Install
-      if: matrix.c_compiler == 'clang'
+    - name: Manage Packages with Conan
+      # Export the C and CXX environment variables to ensure that the correct compiler is used by Conan.
       run: |
-        sudo apt-get install libc++-dev
-
-    - name: Manage Packages with Conan          
-      run: |
+        export C=${{ matrix.c_compiler }}
+        export CXX=${{ matrix.cpp_compiler }}
         pip install conan
         conan profile detect
-        conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} ${{ matrix.libcxx }}
+        conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.c_compiler }} --settings=compiler.version=${{ steps.strings.outputs.compiler-version }} --settings=compiler.libcxx=libstdc++
       #${{ matrix.libcxx }}
 
     - name: Configure CMake
@@ -95,7 +97,7 @@ jobs:
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/${{ matrix.conan_toolchain_path }}
+        -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/${{ steps.strings.output.conan-toolchain-path }}
         -S ${{ github.workspace }}
       #-G "Unix Makefiles"
 
@@ -114,7 +116,6 @@ jobs:
       run: |
         ctest --build-config ${{ matrix.build_type }} --output-on-failure --verbose CTEST_CUSTOM_PRE_TEST="CC='gcc -fprofile-arcs -ftest-coverage' CXX='g++ -fprofile-arcs -ftest-coverage'"
         ${{ matrix.cmd }}
-        lcov.exe --version
         cmake --build . --target coverage
       #make coverage
 
