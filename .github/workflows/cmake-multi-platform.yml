@@ -37,17 +37,14 @@ jobs:
             cmd: |
               Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iwr https://community.chocolatey.org/install.ps1 -UseBasicParsing | iex
               choco install lcov
-              type C:\ProgramData\chocolatey\logs\chocolatey.log
-              dir C:\ProgramData\chocolatey\lib\lcov\
-              dir C:\ProgramData\chocolatey\lib\lcov\tools
-              [System.Environment]::SetEnvironmentVariable("PATH", "$env:PATH;C:\ProgramData\chocolatey\lib\lcov\tools", [System.EnvironmentVariableTarget]::Machine)
+              [System.Environment]::SetEnvironmentVariable("PATH", "$env:PATH;C:\ProgramData\chocolatey\lib\lcov\bin;C:\ProgramData\chocolatey;C:\ProgramData\chocolatey\bin", [System.EnvironmentVariableTarget]::Machine)
             # set PATH=%PATH%;C:\ProgramData\chocolatey\lib\lcov\tools
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
             conan_compiler: gcc
             compiler_version: 13
-            #libcxx: --settings=compiler.libcxx=libstdc++11
+            libcxx: --settings=compiler.libcxx=libstdc++11
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
             cmd: sudo apt-get install lcov
           - os: ubuntu-latest
@@ -55,9 +52,9 @@ jobs:
             cpp_compiler: clang++
             conan_compiler: clang
             compiler_version: 15
-            #libcxx: --settings=compiler.libcxx=libstdc++
+            libcxx: --settings=compiler.libcxx=libstdc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
-            cmd: sudo apt-get install lcov
+            cmd: sudo apt-get install lcov libc++-dev
 
         exclude:
           - os: windows-latest
@@ -81,7 +78,7 @@ jobs:
       run: |
         pip install conan
         conan profile detect
-        conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }}
+        conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} ${{ matrix.libcxx }}
       #${{ matrix.libcxx }}
 
     - name: Configure CMake
