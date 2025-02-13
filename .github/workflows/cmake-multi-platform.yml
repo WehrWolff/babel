@@ -37,6 +37,9 @@ jobs:
             cmd: |
               Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iwr https://community.chocolatey.org/install.ps1 -UseBasicParsing | iex
               choco install lcov
+              type C:\ProgramData\chocolatey\logs\chocolatey.log
+              dir C:\ProgramData\chocolatey\lib\lcov\
+              dir C:\ProgramData\chocolatey\lib\lcov\tools
               [System.Environment]::SetEnvironmentVariable("PATH", "$env:PATH;C:\ProgramData\chocolatey\lib\lcov\tools", [System.EnvironmentVariableTarget]::Machine)
             # set PATH=%PATH%;C:\ProgramData\chocolatey\lib\lcov\tools
           - os: ubuntu-latest
@@ -78,7 +81,7 @@ jobs:
       run: |
         pip install conan
         conan profile detect
-        conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }}
+        conan install . --output-folder=./build --build=missing --no-defaults --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }}
       #${{ matrix.libcxx }}
 
     - name: Configure CMake
