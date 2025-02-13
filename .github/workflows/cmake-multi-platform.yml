@@ -73,31 +73,31 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
-    #- name: Manage Packages with Conan          
-    #  run: |
-    #    pip install conan
-    #    conan profile detect
-    #    conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }}
-    #  #${{ matrix.libcxx }}
+    - name: Manage Packages with Conan          
+      run: |
+        pip install conan
+        conan profile detect
+        conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }}
+      #${{ matrix.libcxx }}
 
-    #- name: Configure CMake
-    #  # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-    #  # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-    #  run: >
-    #    cmake -B ${{ steps.strings.outputs.build-output-dir }}
-    #    -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
-    #    -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
-    #    -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
-    #    -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-    #    -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/${{ matrix.conan_toolchain_path }}
-    #    -S ${{ github.workspace }}
-    #  #-G "Unix Makefiles"
+    - name: Configure CMake
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      run: >
+        cmake -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/${{ matrix.conan_toolchain_path }}
+        -S ${{ github.workspace }}
+      #-G "Unix Makefiles"
 
-    #- name: Build
-    #  # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-    #  # sudo apt-get install lcov
-    #  run: |        
-    #    cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+    - name: Build
+      # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
+      # sudo apt-get install lcov
+      run: |        
+        cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
 
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
@@ -105,8 +105,8 @@ jobs:
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       
       # cmake --build . --target coverage can be used alternatively to make coverage
-      # ctest --build-config ${{ matrix.build_type }} --output-on-failure --verbose CTEST_CUSTOM_PRE_TEST="CC='gcc -fprofile-arcs -ftest-coverage' CXX='g++ -fprofile-arcs -ftest-coverage'"
       run: |
+        ctest --build-config ${{ matrix.build_type }} --output-on-failure --verbose CTEST_CUSTOM_PRE_TEST="CC='gcc -fprofile-arcs -ftest-coverage' CXX='g++ -fprofile-arcs -ftest-coverage'"
         ${{ matrix.cmd }}
         cmake --build . --target coverage
       #make coverage
