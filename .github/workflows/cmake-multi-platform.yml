@@ -81,11 +81,7 @@ jobs:
       run: |
         pip install conan
         conan profile detect
-        conan install . --output-folder=./build --build=missing \
-          --settings:build=compiler.cppstd=20 --settings:host=compiler.cppstd=20 \
-          --settings:build=build_type=${{ matrix.build_type }} --settings:host=build_type=${{ matrix.build_type }} \
-          --settings:build=compiler=${{ matrix.conan_compiler }} --settings:host=compiler=${{ matrix.conan_compiler }} \
-          --settings:build=compiler.version=${{ matrix.compiler_version }} --settings:host=compiler.version=${{ matrix.compiler_version }}
+        conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }}
       #${{ matrix.libcxx }}
 
     - name: Configure CMake
