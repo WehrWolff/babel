@@ -52,7 +52,7 @@ jobs:
             cpp_compiler: clang++
             conan_compiler: clang
             compiler_version: 15
-            libcxx: --settings=compiler.libcxx=libstdc++
+            libcxx: --settings=compiler.libcxx=libc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
             cmd: sudo apt-get install lcov
 
@@ -74,9 +74,13 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
-    - name: Manage Packages with Conan          
+    - name: Clang Install
+      if: matrix.c_compiler == 'clang'
       run: |
         sudo apt-get install libc++-dev
+
+    - name: Manage Packages with Conan          
+      run: |
         pip install conan
         conan profile detect
         conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} ${{ matrix.libcxx }}
