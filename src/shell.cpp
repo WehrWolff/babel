@@ -138,16 +138,16 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
 }
 
 int main(int argc, char* argv[]) {
-    Lexer lexer = setupModuleAndLexer("repl");    
-    const std::filesystem::path ROOT_DIR = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path().parent_path();
+    Lexer lexer = setupModuleAndLexer("repl");
+    const std::filesystem::path ROOT_DIR = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path();
     Parser parser = loadParserData(ROOT_DIR);
 
-    printf(" _____       _          _   |  Documentation: https://github.com/WehrWolff/babel/wiki\n");
-    printf("| ___ \\     | |        | |  |  \n");
-    printf("| |_/ / __ _| |__   ___| |  |  Use bemo for managing packages\n");
-    printf("| ___ \\/ _` | '_ \\ / _ \\ |  |  \n");
-    printf("| |_/ / (_| | |_) |  __/ |  |  Version UNRELEASED (Mar 28, 2024)\n");
-    printf("\\____/ \\__,_|_.__/ \\___|_|  |  https://github.com/WehrWolff/babel\n\n");
+    std::cout << R"( _____       _          _   |  Documentation: https://github.com/WehrWolff/babel/wiki)" << "\n";
+    std::cout << R"(| ___ \     | |        | |  |                                                        )" << "\n";
+    std::cout << R"(| |_/ / __ _| |__   ___| |  |  Use bemo for managing packages                        )" << "\n";
+    std::cout << R"(| ___ \/ _` | '_ \ / _ \ |  |                                                        )" << "\n";
+    std::cout << R"(| |_/ / (_| | |_) |  __/ |  |  Version UNRELEASED (Mar 28, 2024)                     )" << "\n";
+    std::cout << R"(\____/ \__,_|_.__/ \___|_|  |  https://github.com/WehrWolff/babel                    )" << "\n\n";
 
     while (true) {
         std::string text;
