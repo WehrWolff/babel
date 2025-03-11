@@ -21,6 +21,8 @@ class BabelRecipe(ConanFile):
     package_type = "application"
     settings = "os", "compiler", "build_type", "arch"
     options = {"c_compiler": ["ANY", None], "cxx_compiler": ["ANY", None]}
+    # Default option to prevent errors on conan install, where these are not needed and/or used
+    default_options = {"c_compiler": "clang", "cxx_compiler": "clang"}
     languages = "C++"
 
     requires = "boost/[>=1.83.0]"
@@ -61,7 +63,7 @@ class BabelRecipe(ConanFile):
     def package(self):
         cmake = CMake(self)
         cmake.install()
-        cmake.install(cli_args=["--prefix", f"{Path.home() / ".babel"}"])
+        cmake.install(cli_args=["--prefix", f"{Path.home() / '.babel'}"])
 
     def layout (self):
         cmake_layout(self)
