@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.31)
 project(babel)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -85,3 +85,17 @@ add_custom_target(test_coverage
     DEPENDS babel_tests
     COMMENT "Running tests..."
 )
+
+
+# ----- Package Configuration -----
+
+if(WIN32)
+    set(CMAKE_INSTALL_PREFIX "$ENV{HOMEDRIVE}/$ENV{HOMEPATH}/.babel")
+else()
+    set(CMAKE_INSTALL_PREFIX "$ENV{HOME}/.babel")
+endif()
+
+install(TARGETS babel DESTINATION toolchains/bin)
+install(DIRECTORY assets DESTINATION toolchains/bin)
+install(FILES src/grammar.txt DESTINATION toolchains/bin/src)
+install(FILES LICENSE.md README.md DESTINATION .)

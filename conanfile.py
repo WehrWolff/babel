@@ -1,16 +1,16 @@
-import os
-
 from conan import ConanFile
+from conan.tools.files import get, copy
 from conan.tools.cmake import CMake, cmake_layout
-from conan.tools.files import get
 from conan.tools.system.package_manager import Apt, Dnf, PacMan, Zypper
 from conan.errors import ConanInvalidConfiguration
 
+import os
+from pathlib import Path
 class BabelRecipe(ConanFile):
     name = "babel"
     version = "v0.0.0-pre-alpha"
-    user = "WehrWolff"
-    channel = "unstable" # Consider changing this to "fresh" for a release version
+    user = "wehrwolff"
+    channel = "unstable" # Consider changing this to "stable" for a release version
     description = "The Babel programming language"
     license = "BSL-1.0"
     author = "WehrWolff <135031808+WehrWolff@users.noreply.github.com>"
@@ -20,8 +20,7 @@ class BabelRecipe(ConanFile):
     
     package_type = "application"
     settings = "os", "compiler", "build_type", "arch"
-    options = {"compiler.cppstd": [11, 14, 17, 20, 23], "compiler.libcxx": ["libstdc++", "libstdc++11", "libc++"]}
-    default_options = {"compiler.cppstd": 20, "compiler.libcxx": "libstdc++"} # compiler.version
+    options = {"c_compiler": ["ANY", None], "cxx_compiler": ["ANY", None]}
     languages = "C++"
 
     requires = "boost/[>=1.83.0]"
@@ -30,48 +29,53 @@ class BabelRecipe(ConanFile):
     build_policy = "missing"
     upload_policy = "skip"
 
-    #source_folder = "src"
-    #build_folder = "build"
-    #package_folder = "artifacts"
-    #test_package_folder = "tests"
+    # Consider adding source, package and test package folders
+    build_folder = os.path.dirname(__file__) + "/build"
 
-    def config_options(self):
+    def configure(self):
         if self.settings.get_safe("os") == "Windows":
-            self.options.rm_safe("compiler.libcxx")
+            self.settings.rm_safe("compiler.libcxx")
 
     def build(self):
         cmake = CMake(self)
 
         # Note that build_type is needed because the default Windows generator (Visual Studio) is a multi-configuration generator
-        #self.run("cmake -B ./build -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=./build/Release/generators/conan_toolchain.cmake -S ./..")
-
         cmake.configure(
-            #build_script_folder=self.source_folder,  # Equivalent to -B ${{ steps.strings.outputs.build-output-dir }}
             variables={
                 "CMAKE_POLICY_DEFAULT_CMP0091": "NEW",
-                "CMAKE_CXX_COMPILER": "clang++",
-                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": self.options.cxx_compiler,
+                "CMAKE_C_COMPILER": self.options.c_compiler,
                 "CMAKE_BUILD_TYPE": self.settings.build_type,
-                "CMAKE_TOOLCHAIN_FILE": "./build/build/Release/generators/conan_toolchain.cmake" 
             },
-            cli_args=[  # Use CLI args for anything that is not a variable or needs to be passed directly
-                f"-B {self.build_folder}",  # Equivalent to -B ${{ steps.strings.outputs.build-output-dir }}
-                f"-S {self.source_folder}"  # Equivalent to -S ${{ github.workspace }}
+            cli_args=[
+                f"-B {self.build_folder}",
+                f"-S {self.source_folder}"
             ]
         )
 
-        #self.run(f"cmake --build {os.path.join(self.recipe_folder, self.build_folder)} --config {self.settings.build_type}")
         cmake.build(cli_args=[f"--config {self.settings.build_type}"])
+
+    def export_sources(self):
+        copy(self, "*", src=self.recipe_folder, dst=self.export_sources_folder)
+
+    def package(self):
+        cmake = CMake(self)
+        cmake.install()
+        cmake.install(cli_args=["--prefix", f"{Path.home() / ".babel"}"])
 
     def layout (self):
         cmake_layout(self)
 
     def source(self):
         # Add a sha256 hash code to check integrity in the future 
-        get(self, f"{self.url}/releases/archive/refs/tags/{self.version}.tar.gz", sha256=None)
+        try:
+            get(self, f"{self.url}/releases/archive/refs/tags/{self.version}.tar.gz", sha256=None)
+        except Exception:
+            self.output.warning(f"Failed to download {self.url}/releases/archive/refs/tags/{self.version}.tar.gz")
+            self.output.warning("Falling back to the local source folder")
 
     def system_requirements(self):
-        # Depending on the platform or the tools.system.package_manager:tool configuration
+        # Depends on the platform or the tools.system.package_manager:tool configuration
         # Only one of these will be executed
         if self.settings.compiler == "gcc":
             Apt(self).install(["lcov"])
@@ -92,4 +96,10 @@ class BabelRecipe(ConanFile):
 
     def validate(self):
         if self.settings.os not in ["Linux", "Windows", "Macos"]:
-            raise ConanInvalidConfiguration("Currently only Linux, Windows and MacOS are supported")
+            raise ConanInvalidConfiguration("Currently only Linux, Windows and MacOS are supported.")
+        
+        if self.options.c_compiler == None:
+            raise ConanInvalidConfiguration("The C compiler must be set. Use -o='&:c_compiler=' to specify the compiler.")
+        
+        if self.options.cxx_compiler == None:
+            raise ConanInvalidConfiguration("The C++ compiler must be set. Use -o='&:cxx_compiler=' to specify the compiler.")
