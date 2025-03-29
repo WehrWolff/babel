@@ -1,5 +1,6 @@
 from conan import ConanFile
 from conan.tools.files import get, copy
+from conan.tools.build import can_run
 from conan.tools.cmake import CMake, cmake_layout
 from conan.tools.system.package_manager import Apt, Dnf, PacMan, Zypper
 from conan.errors import ConanInvalidConfiguration
@@ -22,7 +23,7 @@ class BabelRecipe(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     options = {"c_compiler": ["ANY", None], "cxx_compiler": ["ANY", None]}
     # Default option to prevent errors on conan install, where these are not needed and/or used
-    default_options = {"c_compiler": "clang", "cxx_compiler": "clang"}
+    default_options = {"c_compiler": "N/A", "cxx_compiler": "N/A"}
     languages = "C++"
 
     requires = "boost/[>=1.83.0]"
@@ -33,6 +34,7 @@ class BabelRecipe(ConanFile):
 
     # Consider adding source, package and test package folders
     build_folder = os.path.dirname(__file__) + "/build"
+    test_package_folder = os.path.dirname(__file__) + "/test_package"
 
     def configure(self):
         if self.settings.get_safe("os") == "Windows":
@@ -56,6 +58,10 @@ class BabelRecipe(ConanFile):
         )
 
         cmake.build(cli_args=[f"--config {self.settings.build_type}"])
+
+        if can_run(self):
+            # Note that --build-config is needed because the default Windows generator (Visual Studio) is a multi-configuration generator
+            cmake.ctest(["--build-config", f"{self.settings.build_type}", "--output-on-failure", "--verbose"])
 
     def export_sources(self):
         copy(self, "*", src=self.recipe_folder, dst=self.export_sources_folder)
@@ -92,9 +98,10 @@ class BabelRecipe(ConanFile):
 
     # Test is intended to prove the package is correctly created
     # It is not intended to run unit, integration or functional tests
-    # TODO: Change this to the intended behavior and provide another method for unit tests
     def test(self):
-        self.run(f"ctest --build-config {self.settings.build_type} --output-on-failure --verbose")
+        if can_run(self):
+            cmd = os.path.join(self.cpp.build.bindir, "example")
+            self.run(cmd, env="conanrun")
 
     def validate(self):
         if self.settings.os not in ["Linux", "Windows", "Macos"]:

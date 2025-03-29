@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.31)
 project(babel)
 
+set(BABEL_VERSION_MAJOR 0)
+set(BABEL_VERSION_MINOR 0)
+set(BABEL_VERSION_PATCH 0)
+set(BABEL_VERSION "${BABEL_VERSION_MAJOR}.${BABEL_VERSION_MINOR}.${BABEL_VERSION_PATCH}")
+
+# set(BABEL_VERSION_SPECIFIER "pre-alpha")
+# set(BABEL_VERSION "${BABEL_VERSION_MAJOR}.${BABEL_VERSION_MINOR}.${BABEL_VERSION_PATCH}-${BABEL_VERSION_SPECIFIER}")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -89,13 +97,44 @@ add_custom_target(test_coverage
 
 # ----- Package Configuration -----
 
+if(CMAKE_SYSTEM_NAME MATCHES "Windows")
+  set(OS_STRING "windows")
+elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  set(OS_STRING "macos")
+elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
+  set(OS_STRING "gnu.linux")
+elseif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+  set(OS_STRING "freebsd")
+else()
+  set(OS_STRING "unknown")
+endif()
+
+set(PACKAGE_VERSION "${BABEL_VERSION}+${CMAKE_SYSTEM_PROCESSOR}.${OS_STRING}")
+set(PACKAGE_VERSION_DIR "${PROJECT_NAME}-${PACKAGE_VERSION}")
+
 if(WIN32)
     set(CMAKE_INSTALL_PREFIX "$ENV{HOMEDRIVE}/$ENV{HOMEPATH}/.babel")
 else()
     set(CMAKE_INSTALL_PREFIX "$ENV{HOME}/.babel")
 endif()
 
-install(TARGETS babel DESTINATION toolchains/bin)
-install(DIRECTORY assets DESTINATION toolchains/bin)
-install(FILES src/grammar.txt DESTINATION toolchains/bin/src)
-install(FILES LICENSE.md README.md DESTINATION .)
+install(TARGETS babel DESTINATION ${PACKAGE_VERSION_DIR}/bin)
+install(CODE "file(MAKE_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${PACKAGE_VERSION_DIR}/core)")
+install(CODE "file(MAKE_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${PACKAGE_VERSION_DIR}/include)")
+install(CODE "file(MAKE_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${PACKAGE_VERSION_DIR}/lib)")
+install(CODE "file(MAKE_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${PACKAGE_VERSION_DIR}/share/docs)")
+install(CODE "file(MAKE_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${PACKAGE_VERSION_DIR}/share/man)")
+install(CODE "file(MAKE_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${PACKAGE_VERSION_DIR}/stdlib)")
+install(FILES LICENSE.md README.md DESTINATION ${PACKAGE_VERSION_DIR})
+
+install(DIRECTORY assets DESTINATION ${PACKAGE_VERSION_DIR}/bin)
+install(FILES src/grammar.txt DESTINATION ${PACKAGE_VERSION_DIR}/bin/src)
+
+install(CODE "file(WRITE \${CMAKE_INSTALL_PREFIX}/config.yaml
+  \"Default: \\\"${PACKAGE_VERSION}\\\"\n\"
+  \"Installed:\n\"
+  \"  - \\\"${BABEL_VERSION}\\\"\n\"
+  \"Environment:\n\"
+  \"  BABEL_HOME: \\\"\${CMAKE_INSTALL_PREFIX}\\\"\n\"
+  \"Settings: {}\n\"
+  \"Overrides: []\")")

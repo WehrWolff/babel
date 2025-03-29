@@ -99,7 +99,7 @@ After building the project, you can run the application with `./project_name`
 
 ## Running the Tests
 
-When using `conan create`, unit tests are automatically run, eliminating the need for manual testing (e.g., with `ctest`). If you're not using `conan create`, you can run the tests manually with the `ctest` command, which is part of the CMake toolset and is used to manage and run tests for CMake-based projects. It's a powerful tool that 
+When using `conan create`, unit tests are automatically run, eliminating the need for manual testing (e.g., with `ctest`). Conan also validates the package for production use, ensuring correct installation, dependency configuration, and consistent behavior across platforms. If you're not using `conan create`, you can run the tests manually with the `ctest` command, which is part of the CMake toolset and is used to manage and run tests for CMake-based projects. It's a powerful tool that 
 allows you to specify which tests to run, control the verbosity of the output, and even run tests in parallel.
 
 - **Running All Tests:** To run all the tests in your test suite, you simply use the `ctest` command.
