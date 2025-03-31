@@ -14,7 +14,7 @@
 
 void run(const Lexer& lexer, const Parser& parser, const std::string& text) {
     std::list<Token> tokens = lexer.tokenize(text);
-    std::cout << parser.parse(tokens) << std::endl;
+    std::visit([](const auto& value) { std::cout << value << std::endl; }, parser.parse(tokens));
 }
 
 void saveParserData(const Parser& parser, const std::filesystem::path& filename) {

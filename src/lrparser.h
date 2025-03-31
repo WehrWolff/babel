@@ -345,7 +345,7 @@ class UnifiedItem {
     public:
         Rule rule;
         int dotIndex;
-        std::list<std::string> lookAheads;
+        std::list<std::string> lookAheads = {};
 
         UnifiedItem(const Rule& rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {
             if (rule.index == 0) {
@@ -355,11 +355,15 @@ class UnifiedItem {
 
         std::list<UnifiedItem> newItemsFromSymbolAfterDot() const {
             std::list<UnifiedItem> result = {};
-            std::string ntR = getElement(dotIndex, rule.development);
+            //std::string ntR = getElement(dotIndex, rule.development);
+            auto it = std::next(rule.development.begin(), dotIndex);
             
-            std::list<Rule> nonterminalRules = rule.grammar->getRulesForNonterminal(ntR);
+            std::list<Rule> nonterminalRules = {};
+            if (it != rule.development.end()) {
+                nonterminalRules = rule.grammar->getRulesForNonterminal(*it);
+            }
 
-            for (Rule ntRule : nonterminalRules) {
+            for (Rule& ntRule : nonterminalRules) {
                 addUnique(UnifiedItem(ntRule, 0) , result);
             }
 
@@ -452,37 +456,41 @@ class LRClosureTable {
         Grammar& grammar;
         std::list<Kernel> kernels;
 
-        explicit LRClosureTable(Grammar& grammar) : grammar(grammar) {     
+        explicit LRClosureTable(Grammar& grammar) : grammar(grammar) {
             std::list<UnifiedItem> l = {UnifiedItem(grammar.rules.front(), 0)};
             
-            Kernel k(0, l);            
-            kernels.push_back(k);            
-            
-            for (auto it = kernels.begin(); it != kernels.end();) {
+            Kernel k(0, l);
+            kernels.push_back(k);
+
+            //for (auto it = kernels.begin(); it != kernels.end();) {
+            for (int i = 0; i < kernels.size();) {
+                //Kernel& kernel = *it;
+                auto it = std::next(kernels.begin(), i);
                 Kernel& kernel = *it;
-
+                
                 updateClosure(kernel);
-
-                if (addGotos(kernel, kernels)) {                    
-                    it = kernels.begin();
+                
+                if (addGotos(kernel, kernels)) {
+                    i = 0;
                 } else {
-                    ++it;
-                    std::cout << "size: " << kernels.size() << ", i: " << std::distance( kernels.begin(), it ) << std::endl;
+                    ++i;
                 }
             }
         }
 
         void updateClosure(Kernel& kernel) const {
-            for (const UnifiedItem& closure : kernel.closure) {
+            for (int i = 0; i < kernel.closure.size(); ++i) {
+                auto it = std::next(kernel.closure.begin(), i);
+                auto closure = *it;
                 std::list<UnifiedItem> newItemsFromSymbolAfterDot = closure.newItemsFromSymbolAfterDot();
-                
+
                 for (const UnifiedItem& item : newItemsFromSymbolAfterDot) {
                     item.addUniqueTo(kernel.closure);
                 }
             }
         }
 
-        bool addGotos(Kernel& kernel, std::list<Kernel>& kernels) const {
+        bool addGotos(Kernel& kernel, std::list<Kernel>& kernel_list) const {
             bool lookAheadsPropagated = false;
             std::map<std::string, std::list<UnifiedItem>> newKernels;
 
@@ -504,11 +512,11 @@ class LRClosureTable {
                 int targetKernelIndex = indexOf(newKernel, kernels);
 
                 if (targetKernelIndex < 0) {
-                    kernels.push_back(newKernel);
+                    kernel_list.push_back(newKernel);
                     targetKernelIndex = newKernel.index;
                 } else {
                     for (const UnifiedItem& item : newKernel.items) {
-                        std::list<UnifiedItem>& items = getUpdateableElement(targetKernelIndex, kernels).items;
+                        std::list<UnifiedItem>& items = getUpdateableElement(targetKernelIndex, kernel_list).items;
                         lookAheadsPropagated |= item.addUniqueTo(items);
                     }
                 }
@@ -656,10 +664,14 @@ class Parser {
                 }
             }
             
-            std::string msg = "Expected";
             expected.remove(EPSILON);
             expected.sort();
             expected.unique();
+            auto it = std::find(expected.begin(), expected.end(), "$");
+            if (it != expected.end())
+            std::rotate(it, ++it, expected.end());
+            
+            std::string msg = "Expected";
             for (std::string elmnt : expected) {
                 msg += " '" + elmnt + "' or";
             }
@@ -668,7 +680,7 @@ class Parser {
             return std::regex_replace(msg, std::regex("'\\$'"), "EOF");
         }
 
-        TreeNode parse(std::list<Token> tokens) const {
+        std::variant<TreeNode, std::string> parse(std::list<Token> tokens) const {
             tokens.push_back(Token("$", "$"));
             std::stack<TreeNode> nodeStack;
             std::stack<int> stateStack;
@@ -708,13 +720,11 @@ class Parser {
                 actionElement = chooseActionElement(state, token_type);
             }
 
-            if (actionElement == std::nullopt) {
-                std::cout << "SyntaxError: " << retrieveMessage(state, (*std::next(tokens.begin(), tokenIndex)).getValue()) << std::endl;
-            } else if (actionElement.value().toString() == "r0") {
-                std::cout << "success" << std::endl;
+            if (actionElement != std::nullopt && actionElement.value().toString() == "r0") {
+                return TreeNode{lrTable.grammar.axiom, std::nullopt, {nodeStack.top()}};
             }
 
-            return TreeNode{lrTable.grammar.axiom, std::nullopt, {nodeStack.top()}};
+            return "SyntaxError: " + retrieveMessage(state, (*std::next(tokens.begin(), tokenIndex)).getValue());
         }
 
         template <class Archive>
