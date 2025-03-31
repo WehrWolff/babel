@@ -31,24 +31,26 @@ jobs:
             c_compiler: cl
             cpp_compiler: cl
             conan_compiler: msvc
-            compiler_version: 193
+            compiler_version: 194
             conan_toolchain_path: build/build/generators/conan_toolchain.cmake
+            cmd: echo "Nothing else to do."
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
             conan_compiler: gcc
-            compiler_version: 11
+            compiler_version: 14
             libcxx: --settings=compiler.libcxx=libstdc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
+            cmd: sudo apt-get install lcov
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
             conan_compiler: clang
-            compiler_version: 15
-            libcxx: --settings=compiler.libcxx=libc++
+            compiler_version: 19
+            libcxx: --settings=compiler.libcxx=libstdc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
-            cmd: sudo apt-get install libc++-dev
-#/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> /home/runner/.bashrc && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && brew install libcxx
+            cmd: sudo apt-get install llvm
+
         exclude:
           - os: windows-latest
             c_compiler: gcc
@@ -67,11 +69,20 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
-    - name: Manage Packages with Conan          
+      # echo "compiler-version=$(${{ matrix.c_compiler }} --version | head -n 1 | grep -oP '\d+\.\d+\.\d+' | cut -d. -f1)" >> "$GITHUB_OUTPUT"
+      # echo "conan-toolchain-path=$(find ${{ github.workspace }} -name conan_toolchain.cmake)" >> "$GITHUB_OUTPUT"
+
+    - name: Setup Prerequisites
       run: |
-        ${{ matrix.cmd }}
         pip install conan
-        conan profile detect || true
+        ${{ matrix.cmd }}
+
+    - name: Manage Packages with Conan
+      # Export the C and CXX environment variables to ensure that the correct compiler is used by Conan.
+      shell: bash
+      run: |
+        [ $RUNNER_OS == "Linux" ] && export C=${{ matrix.c_compiler }} CXX=${{ matrix.cpp_compiler }}
+        conan profile detect --exist-ok
         conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} ${{ matrix.libcxx }}
 
     - name: Configure CMake
@@ -89,13 +100,18 @@ jobs:
 
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+      run: |        
+        cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
 
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest --build-config ${{ matrix.build_type }}
+      
+      run: |
+        ctest --build-config ${{ matrix.build_type }} --output-on-failure --verbose
+        ${{ matrix.cmd }}
+        cmake --build . --target coverage
 
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v3
