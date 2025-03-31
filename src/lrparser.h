@@ -667,9 +667,10 @@ class Parser {
             expected.remove(EPSILON);
             expected.sort();
             expected.unique();
-            auto it = std::find(expected.begin(), expected.end(), "$");
-            if (it != expected.end())
-            std::rotate(it, ++it, expected.end());
+            if (auto it = std::ranges::find(expected, "$"); it != expected.end()) {
+                auto next = it; std::advance(next, 1);
+                std::rotate(it, next, expected.end());
+            }
             
             std::string msg = "Expected";
             for (std::string elmnt : expected) {
