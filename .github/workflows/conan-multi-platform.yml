@@ -62,10 +62,8 @@ jobs:
       # [ $RUNNER_OS == "Linux" ] && export C=${{ matrix.c_compiler }} CXX=${{ matrix.cpp_compiler }}
       # shell: bash
       run: |
-        apt-get install -y --no-install-recommends lcov
-        apt-get install -y --no-install-recommends llvm
         conan profile detect --exist-ok
-        conan create . --build=missing --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --options='&:c_compiler=${{ matrix.c_compiler }}' --options='&:cxx_compiler=${{ matrix.cxx_compiler }}' --settings=compiler.libcxx=libstdc++ -c tools.system.package_manager:mode=install
+        sudo conan create . --build=missing --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --options='&:c_compiler=${{ matrix.c_compiler }}' --options='&:cxx_compiler=${{ matrix.cxx_compiler }}' --settings=compiler.libcxx=libstdc++ -c tools.system.package_manager:mode=install
 
     - name: Get coverage
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
