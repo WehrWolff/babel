@@ -63,7 +63,7 @@ jobs:
       # shell: bash
       run: |
         conan profile detect --exist-ok
-        conan create . --build=missing --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --options='&:c_compiler=${{ matrix.c_compiler }}' --options='&:cxx_compiler=${{ matrix.cxx_compiler }}' --settings=compiler.libcxx=libstdc++ -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo
+        conan create . --build=missing --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --options='&:c_compiler=${{ matrix.c_compiler }}' --options='&:cxx_compiler=${{ matrix.cxx_compiler }}' --settings=compiler.libcxx=libstdc++ -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
 
     - name: Get coverage
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
