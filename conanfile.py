@@ -37,6 +37,7 @@ class BabelRecipe(ConanFile):
     test_package_folder = os.path.dirname(__file__) + "/test_package"
 
     def configure(self):
+        self.output.highlight(self.settings.get_safe("os"))
         if self.settings.get_safe("os") == "Windows":
             self.settings.rm_safe("compiler.libcxx")
 
@@ -50,6 +51,7 @@ class BabelRecipe(ConanFile):
                 "CMAKE_CXX_COMPILER": self.options.cxx_compiler,
                 "CMAKE_C_COMPILER": self.options.c_compiler,
                 "CMAKE_BUILD_TYPE": self.settings.build_type,
+                "CMAKE_POLICY_VERSION_MINIMUM": 3.5
             },
             cli_args=[
                 f"-B {self.build_folder}",
