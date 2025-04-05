@@ -24,7 +24,7 @@ jobs:
           version: '1.10.8'
       - uses: julia-actions/cache@v2
       - name: Install system dependencies
-        run: sudo apt-get texlive
+        run: sudo apt-get install texlive
       - name: Install julia dependencies
         shell: julia --color=yes --project=docs {0}
         run: |
