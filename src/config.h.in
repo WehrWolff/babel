@@ -1,0 +1,19 @@
+#ifndef BABEL_CONFIG_H
+#define BABEL_CONFIG_H
+
+#define BABEL_VERSION_MAJOR @BABEL_VERSION_MAJOR@
+#define BABEL_VERSION_MINOR @BABEL_VERSION_MINOR@
+#define BABEL_VERSION_PATCH @BABEL_VERSION_PATCH@
+#define BABEL_VERSION_STRING "@BABEL_VERSION@"
+
+#define BABEL_VERSION_SPECIFIER "@BABEL_VERSION_SPECIFIER@"
+#define BABEL_FULL_VERSION "@BABEL_FULL_VERSION@"
+
+int expose_babel_version_major();
+int expose_babel_version_minor();
+int expose_babel_version_patch();
+const char* expose_babel_version_string();
+const char* expose_babel_version_specifier();
+const char* expose_babel_full_version();
+
+#endif

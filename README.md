@@ -1,5 +1,5 @@
 <div align=center>
-    <img src="/media/babelLogoText.png">
+    <img src="https://raw.githubusercontent.com/WehrWolff/babel/refs/heads/main/docs/src/assets/babelLogoText.png">
 </div>
 
 # Babel

@@ -23,6 +23,8 @@ lib/
 *.out
 *.app
 
+*.profraw
+
 .DS_Store
 
 # User-specific files
