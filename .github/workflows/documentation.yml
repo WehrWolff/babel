@@ -29,7 +29,11 @@ jobs:
           using Pkg
           Pkg.add("Documenter")
       - name: CMake version config
-        run: cmake -S . -B ./build -DSTOP_ON_CONF=ON # Run CMake so that version information can get passed to Julia
+        # Run CMake so that version information can get passed to Julia
+        run: |
+          cmake -S . -B ./build -DSTOP_ON_CONF=ON
+          cmake --build ./build
+        
       - name: Build and deploy
         run: |
           julia --color=yes --project=docs docs/make.jl
