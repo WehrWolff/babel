@@ -28,6 +28,8 @@ jobs:
         run: |
           using Pkg
           Pkg.add("Documenter")
+      - name: CMake version config
+        run: cmake -S . -B --build # Run CMake so that version information can get passed to Julia
       - name: Build and deploy
         run: |
           julia --color=yes --project=docs docs/make.jl
