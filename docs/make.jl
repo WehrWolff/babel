@@ -46,7 +46,7 @@ makedocs(;
 
 if "deploy" in ARGS
     deploydocs(
-        repo = GitHub("WehrWolff", "babel"),
+        repo = "github.com/WehrWolff/babel.git",
         devbranch = "main",
         target = "build",
         branch = "gh-pages",
