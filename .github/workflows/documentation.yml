@@ -23,12 +23,12 @@ jobs:
         with:
           version: '1.10.8'
       - uses: julia-actions/cache@v2
-      - name: Install dependencies
-        shell: julia --color=yes --project=docs {0}
-        run: |
-          using Pkg
-          Pkg.develop(PackageSpec(path=pwd(), subdir="docs"))
-          Pkg.instantiate()
+      #- name: Install dependencies
+      #  shell: julia --color=yes --project=docs {0}
+      #  run: |
+      #    using Pkg
+      #    Pkg.develop(PackageSpec(path=pwd(), subdir="docs"))
+      #    Pkg.instantiate()
       - name: Build and deploy
         run: |
           julia --color=yes --project=docs docs/make.jl
