@@ -23,12 +23,14 @@ jobs:
         with:
           version: '1.10.8'
       - uses: julia-actions/cache@v2
-      - name: Install dependencies
+      - name: Install system dependencies
+        run: sudo apt-get texlive
+      - name: Install julia dependencies
         shell: julia --color=yes --project=docs {0}
         run: |
           using Pkg
           Pkg.add("Documenter")
-      - name: CMake version config
+      - name: Build required C shared library
         # Run CMake so that version information can get passed to Julia
         run: |
           cmake -S . -B ./build -DSTOP_ON_CONF=ON
