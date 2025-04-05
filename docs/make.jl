@@ -51,7 +51,7 @@ if "deploy" in ARGS
         target = "build",
         branch = "gh-pages",
         deploy_config = GitHubActions(),
-        versions = Versions(["v#.#"])
+        versions = ["v#.#"],
     )
 else
     @info "Skipping deployment ('deploy' not passed)"

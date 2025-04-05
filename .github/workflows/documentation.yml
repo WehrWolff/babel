@@ -36,7 +36,7 @@ jobs:
           using Pkg
           Pkg.add("Documenter")
 
-      - name: Build required C shared library
+      - name: Make required C shared library
         # Run CMake so that version information can get passed to Julia
         run: |
           cmake -S . -B ./build -DSTOP_ON_CONF=ON
