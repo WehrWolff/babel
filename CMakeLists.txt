@@ -19,7 +19,7 @@ configure_file (
 add_library(config SHARED src/config.c)
 
 if(STOP_ON_CONF)
-    exit()
+    return()
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
