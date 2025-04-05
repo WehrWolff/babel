@@ -1,5 +1,6 @@
 using Documenter
 import Documenter.Remotes.GitHub
+import Documenter.GitHubActions
 
 const Manual = [
     "manual/getting-started.md",

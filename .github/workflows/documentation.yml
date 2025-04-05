@@ -17,19 +17,25 @@ jobs:
       pull-requests: read
       statuses: write
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.10.8'
+
       - uses: julia-actions/cache@v2
+
       - name: Install system dependencies
-        run: sudo apt-get install texlive-full latexmk
+        run: sudo apt-get install texlive-full
+        
       - name: Install Julia dependencies
         shell: julia --color=yes --project=docs {0}
         run: |
           using Pkg
           Pkg.add("Documenter")
+
       - name: Build required C shared library
         # Run CMake so that version information can get passed to Julia
         run: |
