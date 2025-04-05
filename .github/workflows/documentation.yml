@@ -27,7 +27,7 @@ jobs:
         shell: julia --color=yes --project=docs {0}
         run: |
           using Pkg
-          Pkg.develop(PackageSpec(path=pwd()))
+          Pkg.develop(PackageSpec(path=pwd(), subdir="docs"))
           Pkg.instantiate()
       - name: Build and deploy
         run: |
