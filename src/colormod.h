@@ -56,17 +56,21 @@ namespace color {
     std::string rize(const std::string& text, FORMAT_CODE format, FORMAT_CODE foreground, FORMAT_CODE background) {
         std::string s = "\033[" + std::to_string(format) + ";" + std::to_string(foreground) + ";" + std::to_string(background) + "m" + text + "\033[0m";
         return s;
+
+        //return std::format("\033[{};{};{}m{}\033[0m", format, foreground, background, text);
     }
 
     std::string rize(const std::string& text, FORMAT_CODE format, FORMAT_CODE foreground) {
         std::string s = "\033[" + std::to_string(format) + ";" + std::to_string(foreground) + "m" + text + "\033[0m";
         return s;
+
+        //return std::format("\033[{};{}m{}\033[0m", format, foreground, text);
     }
 
     std::string rize(const std::string& text, FORMAT_CODE single_format) {
         std::string s = "\033[" + std::to_string(single_format) + "m" + text + "\033[0m";
         return s;
+
+        //return std::format("\033[{}m{}\033[0m", single_format, text);
     }
-
-
 }

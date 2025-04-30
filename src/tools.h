@@ -1,3 +1,6 @@
+#ifndef TOOLS_HPP
+#define TOOLS_HPP
+
 #include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <iterator>
@@ -6,41 +9,17 @@
 #include <optional>
 #include <string>
 
-template <typename T>
-typename std::list<T>::iterator findIndex(std::list<T>& myList, const T& value) {
-    typename std::list<T>::iterator it = myList.begin();
-    size_t index = 0;
-
-    while (it != myList.end()) {
-        if (*it == value) {
-            return it; // Return the iterator pointing to the element
-        }
-        ++it;
-        ++index;
-    }
-
-    return myList.end(); // Element not found
-}
-
-template <typename T>
-T getElement(int index, const std::list<T>& list) {
-    auto list_begin = list.begin();
-    return *std::next(list_begin, index);
-}
-
-template <typename T>
-int indexOf(T element, const std::list<T>& list) {
-    for (int i = 0; i < list.size(); i++) {
-        if (element == getElement(i, list)) {
-            return i;
-        }
+template <typename T, typename Container>
+int indexOf(const T& element, const Container& container) {
+    if (auto it = std::ranges::find(container, element); it != container.end()) {
+        return std::distance(container.begin(), it);
     }
 
     return -1;
 }
 
-template <typename T>
-bool includes(std::list<T> list1, std::list<T> list2) {
+template <typename Container>
+bool includes(Container list1, Container list2) {
     for (const auto& elmnt : list1) {
         if (indexOf(elmnt, list2) < 0){
             return false;
@@ -50,53 +29,56 @@ bool includes(std::list<T> list1, std::list<T> list2) {
     return true;
 }
 
-template <typename T>
-bool includeEachOther(std::list<T> list1, std::list<T> list2) {
+template <typename Container>
+bool includeEachOther(Container list1, Container list2) {
     return includes(list1, list2) && includes(list2, list1);
 }
 
 // leave for clarity, replace later
-template <typename T>
-std::list<T> getOrCreateArray(std::map<std::string, std::list<T>>& dict, std::string key) {
+template <typename K, typename T, typename Hash = std::hash<K>, typename Compare = std::equal_to<>>
+std::list<T> getOrCreateArray(std::unordered_map<K, std::list<T>, Hash, Compare>& dict, const K& key) {
     return dict[key];
 }
 
-std::list<std::string> trimElements(std::list<std::string> list) {
-    std::list<std::string> result = {};
+template<typename Container>
+requires std::same_as<typename Container::value_type, std::string>
+Container trimElements(const Container& container) {
+    Container result = {};
 
-    for (const std::string& elmnt : list) {
+    for (const std::string& elmnt : container) {
         result.push_back(boost::trim_copy(elmnt));
     }
 
     return result;
 }
 
-std::list<std::string> splitString(const std::string& input, const std::string& delimiter) {
-    std::list<std::string> result;
+template <template <typename> class Container>
+Container<std::string> splitString(std::string_view input, std::string_view delimiter) {
+    Container<std::string> result;
     size_t startPos = 0;
     size_t foundPos;
 
     while ((foundPos = input.find(delimiter, startPos)) != std::string::npos) {
-        result.push_back(input.substr(startPos, foundPos - startPos));
+        result.push_back(std::string(input.substr(startPos, foundPos - startPos)));
         startPos = foundPos + delimiter.length();
     }
 
     // Add the last part of the string
-    result.push_back(input.substr(startPos));
+    result.push_back(std::string(input.substr(startPos)));
 
     return result;
 }
 
 // leave for clarity, potentially replace later
-template <typename T>
-bool isElement(T elmnt, const std::list<T>& list) {
-    return std::find(list.begin(), list.end(), elmnt) != list.end();
+template <typename T, typename Container>
+bool isElement(T elmnt, const Container& container) {
+    return std::ranges::find(container, elmnt) != container.end();
 }
 
-template <typename T>
-bool addUnique(T elmnt, std::list<T>& list) {
-    if (!isElement(elmnt, list)) {
-        list.push_back(elmnt);
+template <typename T, typename Container>
+bool addUnique(T elmnt, Container& container) {
+    if (!isElement(elmnt, container)) {
+        container.push_back(elmnt);
 
         return true;
     }
@@ -104,37 +86,33 @@ bool addUnique(T elmnt, std::list<T>& list) {
     return false;
 }
 
-template <typename T>
-T& getUpdateableElement(int index, std::list<T>& list) {
-    auto list_begin = list.begin();
-    return *std::next(list_begin, index);
-}
-
-template <typename T>
-std::list<T> slice(std::list<T> arr, int start = 0, std::optional<int> end = std::nullopt) {
+template <typename Container>
+std::vector<typename Container::value_type> slice(const Container& in, int start = 0, std::optional<int> end = std::nullopt) {
     // Check for valid start and end indices
     if (start < 0) {
-        start += arr.size();
+        start += in.size();
     }
 
-    int actualEnd = (end == std::nullopt) ? arr.size() : end.value();
+    int actualEnd = (end == std::nullopt) ? in.size() : end.value();
 
     if (actualEnd < 0) {
-        actualEnd += arr.size();
+        actualEnd += in.size();
     }
 
-    if (actualEnd > arr.size()) {
-        actualEnd = arr.size();
+    if (actualEnd > in.size()) {
+        actualEnd = in.size();
     }
 
     // Create a new list to store the sliced elements
-    std::list<T> result;
-    auto it = std::next(arr.begin(), start);
+    std::vector<typename Container::value_type> result;
+    auto it = std::next(std::begin(in), start);
 
-    while (it != std::next(arr.begin(), actualEnd)) {
+    while (it != std::next(std::begin(in), actualEnd)) {
         result.push_back(*it);
         ++it;
     }
 
     return result;
 }
+
+#endif /* TOOLS_HPP */

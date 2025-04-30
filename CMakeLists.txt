@@ -31,10 +31,22 @@ set(SOURCE_FILES
 )
 
 find_package(Boost 1.83.0 REQUIRED COMPONENTS algorithm)
+find_package(LLVM REQUIRED CONFIG)
+
+find_program(LLVM_CONFIG_EXE llvm-config)
+
+execute_process(
+    COMMAND ${LLVM_CONFIG_EXE} --libs
+    OUTPUT_VARIABLE LLVM_LIBRARIES
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 
 add_executable(babel ${SOURCE_FILES})
 target_include_directories(babel PRIVATE src)
-target_link_libraries(babel PRIVATE ${Boost_LIBRARIES})
+
+target_link_libraries(babel PRIVATE ${Boost_LIBRARIES} ${LLVM_LIBRARIES})
+target_include_directories(babel PRIVATE ${LLVM_INCLUDE_DIRS})
+target_compile_definitions(babel PRIVATE ${LLVM_DEFINITIONS})
 
 
 # ----- Testing Configuration -----
@@ -49,7 +61,7 @@ find_package(GTest REQUIRED)
 add_executable(babel_tests ${TEST_FILES})
 target_include_directories(babel_tests PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(babel_tests PRIVATE GTest::GTest GTest::Main)
-target_link_libraries(babel_tests PRIVATE ${Boost_LIBRARIES})
+target_link_libraries(babel_tests PRIVATE ${Boost_LIBRARIES} ${LLVM_LIBRARIES})
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage")
@@ -140,7 +152,6 @@ install(CODE "file(MAKE_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${PACKAGE_VERSION_DIR
 install(CODE "file(MAKE_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${PACKAGE_VERSION_DIR}/stdlib)")
 install(FILES LICENSE.md README.md DESTINATION ${PACKAGE_VERSION_DIR})
 
-install(DIRECTORY assets DESTINATION ${PACKAGE_VERSION_DIR}/bin)
 install(FILES src/grammar.txt DESTINATION ${PACKAGE_VERSION_DIR}/bin/src)
 
 install(CODE "file(WRITE \${CMAKE_INSTALL_PREFIX}/config.yaml

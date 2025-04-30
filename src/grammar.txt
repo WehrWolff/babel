@@ -15,7 +15,7 @@ simple_stmt_list    : simple_stmt
                     | simple_stmt SEMICOLON NEWLINE
                     | simple_stmt SEMICOLON simple_stmt_list
 
-simple_stmt         : PASS
+simple_stmt         : NOOP
                     | CONTINUE
                     | BREAK
                     | return_stmt

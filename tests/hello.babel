@@ -1,0 +1,3 @@
+task main(argc: int, argv: list) => void
+    println("Hello World!")
+end

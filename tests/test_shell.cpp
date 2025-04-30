@@ -8,7 +8,7 @@ TEST(GrammarTest, AxiomAndRules) {
     const std::list<std::string> a = {"a"};
     ASSERT_EQ(a, grammar.firsts.at("A"));
     ASSERT_EQ(UnifiedItem(Rule(&grammar, "A -> a A"), 1), UnifiedItem(Rule(&grammar, "A -> a A"), 1));
-    ASSERT_EQ(0, indexOf(UnifiedItem(Rule(&grammar, "A -> a A"), 1), {UnifiedItem(Rule(&grammar, "A -> a A"), 1)}));
+    ASSERT_EQ(0, indexOf(UnifiedItem(Rule(&grammar, "A -> a A"), 1), std::vector{UnifiedItem(Rule(&grammar, "A -> a A"), 1)}));
 }
 
 TEST(LRClosureTableTest, ClosureAndKernels) {
@@ -31,9 +31,9 @@ TEST(ParserTest, Parse) {
     LRTable lrTable(lrClosureTable);
     Parser parser(lrTable);
 
-    std::list<Token> tokens1 = {Token("a", "a")};
-    std::list<Token> tokens2 = {Token("a", "a"), Token("a", "a")};
-    std::list<Token> tokens3 = {Token("a", "a"), Token("b", "b")};
+    std::vector<Token> tokens1 = {Token("a", "a")};
+    std::vector<Token> tokens2 = {Token("a", "a"), Token("a", "a")};
+    std::vector<Token> tokens3 = {Token("a", "a"), Token("b", "b")};
 
     auto result1 = parser.parse(tokens1);
     auto result2 = parser.parse(tokens2);
@@ -65,11 +65,11 @@ TEST(LRTableTest, AnotherLRTable) {
     LRClosureTable lrClosureTable1(grammar1);
     LRTable lrTable1(lrClosureTable1);
     ASSERT_EQ(10, lrTable1.states.size());
-    ASSERT_EQ("s3", lrTable1.states.front().mapping.at("(").toString());
-    ASSERT_EQ("r2", lrTable1.states.front().mapping.at("$").toString());
-    ASSERT_EQ("r0", (*std::next(lrTable1.states.begin(), 1)).mapping.at("$").toString());
-    ASSERT_EQ("4", (*std::next(lrTable1.states.begin(), 3)).mapping.at("A").toString());
-    ASSERT_EQ("r3", (*std::next(lrTable1.states.begin(), 9)).mapping.at(")").toString());
+    ASSERT_EQ("s3", lrTable1.states[0].mapping.at("(").toString());
+    ASSERT_EQ("r2", lrTable1.states[0].mapping.at("$").toString());
+    ASSERT_EQ("r0", lrTable1.states[1].mapping.at("$").toString());
+    ASSERT_EQ("4", lrTable1.states[3].mapping.at("A").toString());
+    ASSERT_EQ("r3", lrTable1.states[9].mapping.at(")").toString());
 }
 
 TEST(ParserTest, AnotherParse) {
@@ -78,9 +78,9 @@ TEST(ParserTest, AnotherParse) {
     LRTable lrTable1(lrClosureTable1);
     Parser parser1(lrTable1);
 
-    std::list<Token> tokens1 = {Token("(", "("), Token(")", ")")};
-    std::list<Token> tokens2 = {Token("(", "("), Token("(", "("), Token(")", ")"), Token(")", ")")};
-    std::list<Token> tokens3 = {Token("(", "("), Token(")", ")"), Token("(", "("), Token(")", ")")};
+    std::vector<Token> tokens1 = {Token("(", "("), Token(")", ")")};
+    std::vector<Token> tokens2 = {Token("(", "("), Token("(", "("), Token(")", ")"), Token(")", ")")};
+    std::vector<Token> tokens3 = {Token("(", "("), Token(")", ")"), Token("(", "("), Token(")", ")")};
 
     auto result1 = parser1.parse(tokens1);
     auto result2 = parser1.parse(tokens2);

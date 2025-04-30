@@ -6,29 +6,29 @@
 #include <stdexcept>
 
 class Token {
-    private:
-        const std::string type;
-        const std::string value;
+private:
+    const std::string type;
+    const std::string value;
 
-    public:
-        Token (std::string _type, std::string _value) : type(_type), value(_value) {}
+public:
+    Token(const std::string& type, const std::string& value) : type(type), value(value) {}
 
-        std::string getType () const {
-            return type;
-        }
-
-        std::string getValue () const {
-            return value;
-        }
-};
-
-std::ostream& operator<< (std::ostream &s, const Token &token) {
-    if (token.getValue() != "") {
-        return s << token.getType() << " : " << token.getValue();    
-    } else {
-        return s << token.getType();
+    std::string getType() const {
+        return type;
     }
-}
+
+    std::string getValue() const {
+        return value;
+    }
+
+    friend std::ostream& operator<<(std::ostream &s, const Token &token) {
+        if (token.getValue() != "") {
+            return s << token.getType() << " : " << token.getValue();    
+        } else {
+            return s << token.getType();
+        }
+    }
+};
 
 class Position {
     private:
@@ -86,22 +86,19 @@ class Lexer {
             current_char = pos.getInd() < text.size() ? text[pos.getInd()] : (char) 0;
         }
 
-        std::list<Token> tokenize(std::string input_stream) const {
-            std::list<Token> tokens;
+        std::vector<Token> tokenize(std::string input_stream) const {
+            std::vector<Token> tokens;
             
             while (!input_stream.empty()) {
                 bool matched = false;
-                for (const std::pair<std::string, std::string>& spec : token_specs) {
-                    const std::string& token_type = spec.first;
-                    const std::string& pattern = spec.second;
-
+                for (const auto& [token_type, pattern] : token_specs) {
                     std::regex regex_pattern("^" + pattern);
                     std::smatch re;
                     
                     if (regex_search(input_stream, re, regex_pattern)) {
                         std::string match = re[0];
-                        if (match.size()==0) break; //fixing wrong matches
-                        tokens.push_back(Token(token_type, match));
+                        if (match.size() == 0) break; //fixing wrong matches
+                        tokens.emplace_back(token_type, match);
                         input_stream = re.suffix();
                         matched = true;
                         break;

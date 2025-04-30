@@ -13,47 +13,32 @@
 #include <filesystem>
 
 void run(const Lexer& lexer, const Parser& parser, const std::string& text) {
-    std::list<Token> tokens = lexer.tokenize(text);
+    std::vector<Token> tokens = lexer.tokenize(text);
     std::visit([](const auto& value) { std::cout << value << std::endl; }, parser.parse(tokens));
 }
 
-void saveParserData(const Parser& parser, const std::filesystem::path& filename) {
-    std::ofstream ofs(filename, std::ios::binary);
-    boost::archive::binary_oarchive ar(ofs);
-    ar << parser;
-}
-
 Parser loadParserData(const std::filesystem::path& project_root) {
-    Parser parser;
-    std::filesystem::path dataPath = project_root / "assets" / "parser.dat";
+    std::filesystem::path grammarPath = project_root / "build" / "grammar.txt";
+    std::ifstream t(grammarPath);
+    if (!t.is_open()) { std::cout << "Error opening file" << std::endl; }
+    std::stringstream buffer;
+    buffer << t.rdbuf();
 
-    if (auto ifs = std::ifstream(dataPath, std::ios::binary)/*; false*/) {
-        boost::archive::binary_iarchive ar(ifs);
-        ar >> parser;
-    } else {
-        std::filesystem::path grammarPath = project_root / "build" / "grammar.txt";
-        std::ifstream t(grammarPath);
-        if (!t.is_open()) { std::cout << "Error opening file" << std::endl; }
-        std::stringstream buffer;
-        buffer << t.rdbuf();
-
-        Grammar grammar(transform_string(buffer.str()));
-        std::cout << grammar.alphabet << std::endl;
-        LRClosureTable closureTable(grammar);
-        LRTable lrTable(closureTable);
-        parser = Parser(lrTable);
-        saveParserData(parser, dataPath);
-    }
+    Grammar grammar(transform_string(buffer.str()));
+    LRClosureTable closureTable(grammar);
+    LRTable lrTable(closureTable);
+    Parser parser(lrTable);
+    
     return parser;
 }
 
 Lexer setupModuleAndLexer(const std::string& file_name) {
     // Open a new context and module.
-    // TheContext = std::make_unique<LLVMContext>();
-    // TheModule = std::make_unique<Module>("Babel Core", *TheContext);
+    TheContext = std::make_unique<llvm::LLVMContext>();
+    TheModule = std::make_unique<llvm::Module>("Babel Core", *TheContext);
 
     // Create a new builder for the module.
-    // Builder = std::make_unique<IRBuilder<>>(*TheContext);
+    Builder = std::make_unique<llvm::IRBuilder<>>(*TheContext);
 
     auto lexer = Lexer(file_name, {
         {"TYPE", "\\b(?:int|float|bool|string|char|list|tuple|map|dict|any|void)\\b"},
@@ -75,7 +60,7 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"ELSE", "else"},
         {"ELIF", "elif"},
         {"THEN", "then"},
-        {"MATCH", "macth"},
+        {"MATCH", "match"},
         {"CASE", "case"},
         {"OTHERWISE", "otherwise"},
         {"END", "end"},
@@ -87,7 +72,7 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"TRY", "try"},
         {"CATCH", "catch"},
         {"FINALLY", "finally"},
-        {"PASS", "pass"},
+        {"NOOP", "noop"},
         {"CONTINUE", "continue"},
         {"BREAK", "break"},
         {"RETURN", "return"},
@@ -118,8 +103,11 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"POWER", "\\^"},
         {"MODULO", "%"},
         {"EQUALS", "="},
-        {"OR", "\\|"},
-        {"AND", "&"},
+        {"OR", "\\|\\|"},
+        {"AND", "&&"},
+        {"BIT_OR", "\\|"},
+        {"BIT_XOR", "bit_xor"},
+        {"BIT_AND", "&"},
         {"NOT", "!"},
         {"LT", "<"},
         {"GT", ">"},
@@ -138,25 +126,41 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
 }
 
 int main(int argc, char* argv[]) {
-    Lexer lexer = setupModuleAndLexer("repl");
-    const std::filesystem::path ROOT_DIR = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path();
-    Parser parser = loadParserData(ROOT_DIR);
+    if (argc == 1) {
+        Lexer lexer = setupModuleAndLexer("repl");
+        const std::filesystem::path ROOT_DIR = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path();
+        Parser parser = loadParserData(ROOT_DIR);
 
-    std::cout << R"( _____       _          _   |  Documentation: https://github.com/WehrWolff/babel/wiki)" << "\n";
-    std::cout << R"(| ___ \     | |        | |  |                                                        )" << "\n";
-    std::cout << R"(| |_/ / __ _| |__   ___| |  |  Use bemo for managing packages                        )" << "\n";
-    std::cout << R"(| ___ \/ _` | '_ \ / _ \ |  |                                                        )" << "\n";
-    std::cout << R"(| |_/ / (_| | |_) |  __/ |  |  Version UNRELEASED (Mar 28, 2024)                     )" << "\n";
-    std::cout << R"(\____/ \__,_|_.__/ \___|_|  |  https://github.com/WehrWolff/babel                    )" << "\n\n";
+        std::cout << R"( _____       _          _   |  Documentation: https://github.com/WehrWolff/babel/wiki)" << "\n";
+        std::cout << R"(| ___ \     | |        | |  |                                                        )" << "\n";
+        std::cout << R"(| |_/ / __ _| |__   ___| |  |  Use beemo for managing packages                       )" << "\n";
+        std::cout << R"(| ___ \/ _` | '_ \ / _ \ |  |                                                        )" << "\n";
+        std::cout << R"(| |_/ / (_| | |_) |  __/ |  |  Version UNRELEASED (Mar 28, 2024)                     )" << "\n";
+        std::cout << R"(\____/ \__,_|_.__/ \___|_|  |  https://github.com/WehrWolff/babel                    )" << "\n\n";
 
-    while (true) {
-        std::string text;
-        std::cout << color::rize("babel> ", color::BOLD, color::MAGENTA);
-        getline(std::cin, text);
-        
-        if (text == "exit()") break;
-        run(lexer, parser, text);
+        while (true) {
+            std::string text;
+            std::cout << color::rize("babel> ", color::FORMAT_CODE::BOLD, color::FORMAT_CODE::MAGENTA);
+            getline(std::cin, text);
+            
+            if (text == "exit()") break;
+            run(lexer, parser, text);
+        }
+    } else if (argc == 2)
+    {
+        std::filesystem::path source = std::filesystem::absolute(argv[1]);
+
+        unsigned long size = std::filesystem::file_size(source);
+        std::string content(size, '\0');
+        std::ifstream in(source);
+        in.read(&content[0], size);
+
+        Lexer lexer = setupModuleAndLexer(argv[1]);
+        const std::filesystem::path ROOT_DIR = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path();
+        Parser parser = loadParserData(ROOT_DIR);
+
+        run(lexer, parser, content);
     }
-
+    
     return 0;
 }
