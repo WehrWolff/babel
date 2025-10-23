@@ -28,7 +28,9 @@ jobs:
       - uses: julia-actions/cache@v2
 
       - name: Install system dependencies
-        run: sudo apt-get install texlive-full --fix-missing
+        run: |
+          sudo apt-get update
+          sudo apt-get install texlive-full --fix-missing
         
       - name: Install Julia dependencies
         shell: julia --color=yes --project=docs {0}
