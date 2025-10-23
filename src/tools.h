@@ -53,7 +53,7 @@ std::ostream& operator<<(std::ostream& os, const Container& container) {
     return os;
 }
 
-template <typename T, typename Container>
+template <typename T, ContainerOf<T> Container>
 int indexOf(const T& element, const Container& container) {
     if (auto it = std::ranges::find(container, element); it != container.end()) {
         return std::distance(container.begin(), it);
@@ -62,7 +62,7 @@ int indexOf(const T& element, const Container& container) {
     return -1;
 }
 
-template <typename Container>
+template <Container Container>
 bool includes(Container list1, Container list2) {
     for (const auto& elmnt : list1) {
         if (indexOf(elmnt, list2) < 0){
@@ -73,7 +73,7 @@ bool includes(Container list1, Container list2) {
     return true;
 }
 
-template <typename Container>
+template <Container Container>
 bool includeEachOther(Container list1, Container list2) {
     return includes(list1, list2) && includes(list2, list1);
 }
@@ -84,8 +84,7 @@ std::list<T> getOrCreateArray(std::unordered_map<K, std::list<T>, Hash, Compare>
     return dict[key];
 }
 
-template<typename Container>
-requires std::same_as<typename Container::value_type, std::string>
+template<ContainerOf<std::string> Container>
 Container trimElements(const Container& container) {
     Container result = {};
 
@@ -96,9 +95,9 @@ Container trimElements(const Container& container) {
     return result;
 }
 
-template <template <typename> class Container>
-Container<std::string> splitString(std::string_view input, std::string_view delimiter) {
-    Container<std::string> result;
+template<ContainerOf<std::string> Container>
+Container splitString(std::string_view input, std::string_view delimiter) {
+    Container result;
     size_t startPos = 0;
     size_t foundPos;
 
@@ -114,12 +113,12 @@ Container<std::string> splitString(std::string_view input, std::string_view deli
 }
 
 // leave for clarity, potentially replace later
-template <typename T, typename Container>
+template <typename T, ContainerOf<T> Container>
 bool isElement(T elmnt, const Container& container) {
     return std::ranges::find(container, elmnt) != container.end();
 }
 
-template <typename T, typename Container>
+template <typename T, ContainerOf<T> Container>
 bool addUnique(T elmnt, Container& container) {
     if (!isElement(elmnt, container)) {
         container.push_back(elmnt);
@@ -130,7 +129,7 @@ bool addUnique(T elmnt, Container& container) {
     return false;
 }
 
-template <typename Container>
+template <Container Container>
 std::vector<typename Container::value_type> slice(const Container& in, int start = 0, std::optional<int> end = std::nullopt) {
     // Check for valid start and end indices
     if (start < 0) {

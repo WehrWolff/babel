@@ -72,6 +72,11 @@ jobs:
       # echo "compiler-version=$(${{ matrix.c_compiler }} --version | head -n 1 | grep -oP '\d+\.\d+\.\d+' | cut -d. -f1)" >> "$GITHUB_OUTPUT"
       # echo "conan-toolchain-path=$(find ${{ github.workspace }} -name conan_toolchain.cmake)" >> "$GITHUB_OUTPUT"
 
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@v2
+      with:
+        version: "18.1.3"
+
     - name: Setup Prerequisites
       run: |
         pip install conan

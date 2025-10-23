@@ -176,14 +176,14 @@ public:
 };
 
 Rule::Rule(const Grammar* grammar, const std::string& text) : grammar(grammar), index(static_cast<int>(grammar->rules.size()) ) {
-    std::list<std::string> split = splitString<std::list>(text, "->");
+    std::list<std::string> split = splitString<std::list<std::string>>(text, "->");
     nonterminal = boost::trim_copy(split.front());
-    pattern = trimElements(splitString<std::list>(nonterminal, " "));
-    development = trimElements(splitString<std::vector>(boost::trim_copy(split.back()), " "));
+    pattern = trimElements(splitString<std::list<std::string>>(nonterminal, " "));
+    development = trimElements(splitString<std::vector<std::string>>(boost::trim_copy(split.back()), " "));
 }
 
 void Grammar::initializeRulesAndAlphabetAndNonterminals (const std::string& grammar_text) {
-    std::list<std::string> lines = splitString<std::list>(grammar_text, "\n");
+    std::list<std::string> lines = splitString<std::list<std::string>>(grammar_text, "\n");
 
     for (const std::string& _ : lines) {
         std::string line = boost::trim_copy(_);
