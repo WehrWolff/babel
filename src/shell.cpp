@@ -12,8 +12,12 @@
 #include <string>
 #include <filesystem>
 
+#include "tools.h"
+
 void run(const Lexer& lexer, const Parser& parser, const std::string& text) {
     std::vector<Token> tokens = lexer.tokenize(text);
+    Lexer::insertSemicolons(tokens);
+    std::cout << tokens << std::endl;
     std::visit([](const auto& value) { std::cout << value << std::endl; }, parser.parse(tokens));
 }
 
@@ -33,20 +37,15 @@ Parser loadParserData(const std::filesystem::path& project_root) {
 }
 
 Lexer setupModuleAndLexer(const std::string& file_name) {
-    // Open a new context and module.
-    TheContext = std::make_unique<llvm::LLVMContext>();
-    TheModule = std::make_unique<llvm::Module>("Babel Core", *TheContext);
-
-    // Create a new builder for the module.
-    Builder = std::make_unique<llvm::IRBuilder<>>(*TheContext);
-
     auto lexer = Lexer(file_name, {
-        {"TYPE", "\\b(?:int|float|bool|string|char|list|tuple|map|dict|any|void)\\b"},
+        {"TYPE", "\\b(?:int|float|bool|string|cstr|char|list|tuple|map|dict|any|void)\\b"},
         {"CLASS", "\\bclass\\b"},
+        {"EXTERN", "\\bextern\\b"},
         {"TASK", "\\btask\\b"},
         {"STRUCT", "\\bstruct\\b"},
-        {"STORAGE_MODIFIER", "\\b(?:static|const|final)\\b"},
-        {"STRING", R"("[^"]*")"},
+        //{"STORAGE_MODIFIER", "\\b(?:static|const|final)\\b"},
+        {"VARDECL", "\\b(?:let|const)\\b"},
+        {"STRING", R"~("(\\.|[^"\\])*")~"},
         {"CHAR", "'[^']{1}'"},
         {"FLOATING_POINT", "\\d*\\.\\d+"},
         {"BOOL", "(TRUE|FALSE)"},
@@ -56,36 +55,43 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"LBRACE", "\\{"},
         {"RBRACE", "\\}"},
         {"RPAREN", "\\)"},
-        {"IF", "if"},
-        {"ELSE", "else"},
-        {"ELIF", "elif"},
-        {"THEN", "then"},
-        {"MATCH", "match"},
-        {"CASE", "case"},
-        {"OTHERWISE", "otherwise"},
-        {"END", "end"},
-        {"DO", "do"},
-        {"WHILE", "while"},
-        {"FOR", "for"},
-        {"TO", "to"},
-        {"STEP", "step"},
-        {"TRY", "try"},
-        {"CATCH", "catch"},
-        {"FINALLY", "finally"},
-        {"NOOP", "noop"},
-        {"CONTINUE", "continue"},
-        {"BREAK", "break"},
-        {"RETURN", "return"},
-        {"RAISE", "raise"},
-        {"IMPORT", "imp"},    
+        {"IF", "\\bif\\b"},
+        {"ELSE", "\\belse\\b"},
+        {"ELIF", "\\belif\\b"},
+        {"THEN", "\\bthen\\b"},
+        {"MATCH", "\\bmatch\\b"},
+        {"CASE", "\\bcase\\b"},
+        {"OTHERWISE", "\\botherwise\\b"},
+        {"END", "\\bend\\b"},
+        {"DO", "\\bdo\\b"},
+        {"WHILE", "\\bwhile\\b"},
+        {"FOR", "\\bfor\\b"},
+        {"TO", "\\bto\\b"},
+        {"STEP", "\\bstep\\b"},
+        {"TRY", "\\btry\\b"},
+        {"CATCH", "\\bcatch\\b"},
+        {"FINALLY", "\\bfinally\\b"},
+        {"NOOP", "\\bnoop\\b"},
+        {"CONTINUE", "\\bcontinue\\b"},
+        {"BREAK", "\\bbreak\\b"},
+        {"GOTO", "\\bgoto\\b"},
+        {"LABEL_START", "\\$"},
+        {"RETURN", "\\breturn\\b"},
+        {"RAISE", "\\braise\\b"},
+        {"IMPORT", "\\bimp\\b"},    
         {"EQEQ", "=="},
         {"PLUS_EQUALS", "\\+="},
         {"MINUS_EQUALS", "-="},
         {"MULTIPLY_EQUALS", "\\*="},
         {"DIVIDE_EQUALS", "/="},
-        {"POWER_EQUALS", "\\^="},
+        {"POWER_EQUALS", "\\*\\*="},
         {"MODULO_EQUALS", "%="},
         {"INTEGER_DIVIDE_EQUALS", "//="},
+        {"LSHIFT_EQUALS", "<<="},
+        {"RSHIFT_EQUALS", ">>="},
+        {"BIT_OR_EQUALS", "\\|="},
+        {"BIT_AND_EQUALS", "&="},
+        {"BIT_XOR_EQUALS", "\\^="},
         {"NEGLIGIBLY_LOW", "<<<"},
         {"LSHIFT", "<<"},
         {"RSHIFT", ">>"},
@@ -100,13 +106,14 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"MINUS", "-"},
         {"MULTIPLY", "\\*"},
         {"DIVIDE", "/"},
-        {"POWER", "\\^"},
+        {"POWER", "\\*\\*"},
         {"MODULO", "%"},
         {"EQUALS", "="},
         {"OR", "\\|\\|"},
+        {"XOR", "\\^\\^"},
         {"AND", "&&"},
         {"BIT_OR", "\\|"},
-        {"BIT_XOR", "bit_xor"},
+        {"BIT_XOR", "\\^"},
         {"BIT_AND", "&"},
         {"NOT", "!"},
         {"LT", "<"},
@@ -126,6 +133,13 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
 }
 
 int main(int argc, char* argv[]) {
+    // Open a new context and module.
+    TheContext = std::make_unique<llvm::LLVMContext>();
+    TheModule = std::make_unique<llvm::Module>("Babel Core", *TheContext);
+
+    // Create a new builder for the module.
+    Builder = std::make_unique<llvm::IRBuilder<>>(*TheContext);
+
     if (argc == 1) {
         Lexer lexer = setupModuleAndLexer("repl");
         const std::filesystem::path ROOT_DIR = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path();
@@ -160,7 +174,19 @@ int main(int argc, char* argv[]) {
         Parser parser = loadParserData(ROOT_DIR);
 
         run(lexer, parser, content);
+
+        std::error_code EC;
+        llvm::raw_fd_ostream outFile(source.stem().string() + ".ll", EC);
+
+        if (EC) {
+            llvm::errs() << "Error opening file: " << EC.message() << "\n";
+        } else {
+            TheModule->print(outFile, nullptr);
+        }
     }
+
+    llvm::outs() << "=== LLVM IR Dump ===\n";
+    TheModule->print(llvm::outs(), nullptr);
     
     return 0;
 }

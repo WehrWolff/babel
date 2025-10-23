@@ -1,0 +1,10 @@
+task fibonacci(n: int) => int do
+    if n <= 1 then
+        return n
+    end
+
+    return fibonacci(n - 1) + fibonacci(n - 2)
+end
+
+extern task printd(digit: int) => void
+printd(fibonacci(42))

@@ -2,13 +2,15 @@
 #include <string>
 #include <list>
 #include <map>
+#include <ranges>
+#include <algorithm>
 #include <regex>
 #include <stdexcept>
 
 class Token {
 private:
-    const std::string type;
-    const std::string value;
+    std::string type;
+    std::string value;
 
 public:
     Token(const std::string& type, const std::string& value) : type(type), value(value) {}
@@ -28,6 +30,8 @@ public:
             return s << token.getType();
         }
     }
+
+    Token& operator=(const Token& tok) = default;
 };
 
 class Position {
@@ -113,5 +117,31 @@ class Lexer {
 
             return tokens;
         }
+
+        static std::vector<Token> insertSemicolons(std::vector<Token>& tokens) {
+            auto subv = std::ranges::unique(tokens, [](const Token& a, const Token& b) { return a.getType() == "NEWLINE" && b.getType() == "NEWLINE"; });
+            tokens.erase(subv.begin(), tokens.end());
+
+            for (size_t i = 1; i < tokens.size() - 1; ++i) {
+                if (tokens[i].getType() == "NEWLINE" && isLineTerminating(tokens[i-1].getType()) && !isContinuation(tokens[i+1].getType())) {
+                    tokens[i] = Token("SEMICOLON", ";");
+                }
+            }
+
+            std::erase_if(tokens, [](const Token& tok){ return tok.getType() == "NEWLINE"; });
+
+            return tokens;
+        }
+
+        static bool isLineTerminating(std::string_view type) {
+            return type == "VAR" || type == "TYPE" || 
+                    type == "INTEGER" || type == "FLOATING_POINT" || type == "CHAR" || type == "STRING" || type == "BOOL" || type == "NULL" ||
+                    type == "BREAK" || type == "CONTINUE" || type == "RETURN" || type == "NOOP" || type == "FALLTHROUGH" || type ==  "END" ||
+                    type == "INCREMENT" || type == "DECREMENT" || type == "RPAREN" || type == "RBRACE";
+        }
         
+        static bool isContinuation(std::string_view type) {
+            // method chaining, also consider adding else (and similar), opening "brace" things like if condition then, pipe operator
+            return type == "DOT";
+        }
 };

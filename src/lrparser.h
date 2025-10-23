@@ -679,8 +679,21 @@ public:
         }
 
         if (actionElement != std::nullopt && actionElement.value().toString() == "r0") {
+            if (!std::holds_alternative<TreeNode>(reducedNodes.top())) {
+                std::deque<std::unique_ptr<BaseAST>> statement_list;
+                while (!reducedNodes.empty()) {
+                    statement_list.push_front(std::move(std::get<std::unique_ptr<BaseAST>>(reducedNodes.top())));
+                    reducedNodes.pop();
+                }
+
+                auto root = std::make_unique<RootAST>(std::move(statement_list));
+                root->codegen()->print(llvm::errs());
+                fprintf(stderr, "\n");
+            }
+
             //return TreeNode{lrTable.grammar.axiom, std::nullopt, {reducedNodes.top()}};
-            return "Success";
+            return TreeNode{lrTable.grammar.axiom, std::nullopt, {nodeStack.top()}};
+            //return "Success";
         }
 
         return "SyntaxError: " + retrieveMessage(state, tokens[tokenIndex].getValue());

@@ -1,3 +1,2 @@
-task main(argc: int, argv: list) => void
-    println("Hello World!")
-end
+extern task printf(str: cstr) => void
+printf("Hello World")

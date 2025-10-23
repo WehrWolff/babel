@@ -1,28 +1,31 @@
 program             : statement_list
 
-terminator          : NEWLINE
-                    | SEMICOLON
+terminator          : SEMICOLON
 
 statement_list      : statement
                     | statement statement_list
 
 statement           : simple_stmt_list
-                    | compound_stmt
+                    | compound_stmt terminator
 
 simple_stmt_list    : simple_stmt
-                    | simple_stmt SEMICOLON
-                    | simple_stmt NEWLINE
-                    | simple_stmt SEMICOLON NEWLINE
-                    | simple_stmt SEMICOLON simple_stmt_list
+                    | simple_stmt terminator
+                    | simple_stmt terminator simple_stmt_list
 
 simple_stmt         : NOOP
                     | CONTINUE
                     | BREAK
+                    | goto_stmt
+                    | label_stmt
                     | return_stmt
                     | raise_stmt
                     | import_stmt
                     | assignment
                     | function_call
+
+goto_stmt           : GOTO VAR
+
+label_stmt          : LABEL_START VAR
 
 return_stmt         : RETURN comma_values
                     | RETURN
@@ -32,7 +35,8 @@ raise_stmt          : RAISE expression
 import_stmt         : IMPORT comma_values
 
 assignment          : VAR assignment_operator expression
-                    | VAR type_spec assignment_operator expression
+                    | VARDECL VAR assignment_operator expression
+                    | VARDECL VAR type_spec assignment_operator expression
 
 assignment_operator : EQUALS
                     | PLUS_EQUALS
@@ -42,6 +46,11 @@ assignment_operator : EQUALS
                     | POWER_EQUALS
                     | MODULO_EQUALS
                     | INTEGER_DIVIDE_EQUALS
+                    | LSHIFT_EQUALS
+                    | RSHIFT_EQUALS
+                    | BIT_OR_EQUALS
+                    | BIT_AND_EQUALS
+                    | BIT_XOR_EQUALS
 
 type_spec           : COLON TYPE
 
@@ -52,21 +61,21 @@ compound_stmt       : task_def
                     | loop_stmt
                     | try_stmt
 
-block               : NEWLINE statement_list
+block               : statement_list
                     | simple_stmt_list
 
-args                : VAR
-                    | VAR type_spec
-                    | VAR EQUALS expression
+args                : VAR type_spec
                     | VAR type_spec EQUALS expression
                     | args COMMA args
 
-task_header         : TASK VAR LPAREN RPAREN
-                    | TASK VAR LPAREN RPAREN RARR TYPE
-                    | TASK VAR LPAREN args RPAREN
-                    | TASK VAR LPAREN args RPAREN RARR TYPE
+task_header         : TASK VAR LPAREN RPAREN RARR TYPE DO
+                    | TASK VAR LPAREN args RPAREN RARR TYPE DO
+
+extern_task         : EXTERN TASK VAR LPAREN args RPAREN RARR TYPE
+                    | EXTERN TASK VAR LPAREN RPAREN RARR TYPE
 
 task_def            : task_header block END
+                    | extern_task
 
 task_def_list       : task_def
                     | task_def task_def_list
@@ -110,8 +119,11 @@ catch_blocks        : CATCH VAR block
 
 expression          : disjunction
 
-disjunction         : conjunction
-                    | conjunction OR disjunction
+disjunction         : contravalence
+                    | contravalence OR disjunction
+
+contravalence       : conjunction
+                    | conjunction XOR contravalence
 
 conjunction         : inversion
                     | inversion AND conjunction
@@ -119,15 +131,13 @@ conjunction         : inversion
 inversion           : NOT inversion
                     | comparison
 
-comparison          : bitwise_or
-                    | bitwise_or comparison_operator comparison
-
-comparison_operator : EQEQ
-                    | LTEQ
-                    | GTEQ
-                    | NOTEQ
-                    | LT
-                    | GT
+comparison          : bitwise_or EQEQ comparison
+                    | bitwise_or NOTEQ comparison
+                    | bitwise_or LTEQ comparison
+                    | bitwise_or GTEQ comparison
+                    | bitwise_or LT comparison
+                    | bitwise_or GT comparison
+                    | bitwise_or
 
 bitwise_or          : bitwise_or BIT_OR bitwise_xor
                     | bitwise_xor
@@ -166,6 +176,7 @@ primary             : primary DOT VAR
                     | function_call
                     | class_construction
                     | atom
+                    | LPAREN expression RPAREN
 
 function_call       : VAR LPAREN RPAREN
                     | VAR LPAREN params RPAREN
