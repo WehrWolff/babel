@@ -33,16 +33,10 @@ set(SOURCE_FILES
 find_package(Boost 1.83.0 REQUIRED COMPONENTS algorithm)
 find_package(LLVM REQUIRED CONFIG)
 
-find_program(LLVM_CONFIG_EXE llvm-config)
-
-execute_process(
-    COMMAND ${LLVM_CONFIG_EXE} --libs
-    OUTPUT_VARIABLE LLVM_LIBRARIES
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
 add_executable(babel ${SOURCE_FILES})
 target_include_directories(babel PRIVATE src)
+
+llvm_map_components_to_libnames(LLVM_LIBS core irreader support)
 
 target_link_libraries(babel PRIVATE ${Boost_LIBRARIES} ${LLVM_LIBRARIES})
 target_include_directories(babel PRIVATE ${LLVM_INCLUDE_DIRS})
@@ -64,13 +58,13 @@ target_link_libraries(babel_tests PRIVATE GTest::GTest GTest::Main)
 target_link_libraries(babel_tests PRIVATE ${Boost_LIBRARIES} ${LLVM_LIBRARIES})
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage -g")
 endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-instr-generate -fcoverage-mapping")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-instr-generate -fcoverage-mapping")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-instr-generate -fcoverage-mapping -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-instr-generate -fcoverage-mapping -g")
 endif()
 
 enable_testing()
