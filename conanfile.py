@@ -26,7 +26,7 @@ class BabelRecipe(ConanFile):
     default_options = {"c_compiler": "N/A", "cxx_compiler": "N/A"}
     languages = "C++"
 
-    requires = "boost/[>=1.83.0]"
+    requires = "boost/[>=1.83.0]", "llvm-core/[>=19.1.7]"
     test_requires = "gtest/[>=1.11.0]"
     generators = "CMakeDeps", "CMakeToolchain"
     build_policy = "missing"
