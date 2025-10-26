@@ -7,7 +7,7 @@
 struct TreeNode {
     std::string name;
     std::optional<std::string> data;
-    std::deque<TreeNode> children;
+    std::list<TreeNode> children;
 
     //TreeNode() = default;
 

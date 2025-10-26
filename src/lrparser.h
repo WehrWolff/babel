@@ -20,6 +20,7 @@
 #include <variant>
 #include <vector>
 #include "tools.h"
+#include "platform.h"
 #include "lexer.h"
 #include "ast_builder.h"
 #include "util.hpp"
@@ -599,7 +600,7 @@ public:
     Parser() = default;
     explicit Parser(const LRTable& lrTable) : lrTable(lrTable) {}
 
-    __attribute__ ((cold)) std::string retrieveMessage(const State& state, const std::string& token) const {
+    BABEL_COLD std::string retrieveMessage(const State& state, const std::string& token) const {
         std::unordered_map<std::string, LRAction, TransparentStringHash, std::equal_to<>> m = state.mapping;
         
         std::list<std::string> expected;

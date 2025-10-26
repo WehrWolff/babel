@@ -46,7 +46,7 @@ jobs:
             c_compiler: clang
             cpp_compiler: clang++
             conan_compiler: clang
-            compiler_version: 19
+            compiler_version: 18
             libcxx: --settings=compiler.libcxx=libstdc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
             cmd: sudo apt-get install llvm
