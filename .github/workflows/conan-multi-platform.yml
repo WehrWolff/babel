@@ -57,13 +57,23 @@ jobs:
       run: |
         pip install conan
 
+    - name: Cache Conan packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.conan2
+        key: ${{ runner.os }}-conan-${{ matrix.conan_compiler }}${{ matrix.compiler_version }}-${{ hashFiles('conanfile.py', 'CMakeLists.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-conan-${{ matrix.conan_compiler }}${{ matrix.compiler_version }}-
+          ${{ runner.os }}-conan-${{ matrix.conan_compiler }}
+          ${{ runner.os }}-conan-
+
     - name: Build with Conan
-      # Export the C and CXX environment variables to ensure that the correct compiler is used by Conan.
-      # [ $RUNNER_OS == "Linux" ] && export C=${{ matrix.c_compiler }} CXX=${{ matrix.cpp_compiler }}
-      # shell: bash
+      # Export the CC and CXX environment variables to ensure that the correct compiler is used by Conan.
+      shell: bash
       run: |
+        [ $RUNNER_OS == "Linux" ] && export CC=${{ matrix.c_compiler }} CXX=${{ matrix.cpp_compiler }}
         conan profile detect --exist-ok
-        conan build . --output-folder=./build --build=missing --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --options='&:c_compiler=${{ matrix.c_compiler }}' --options='&:cxx_compiler=${{ matrix.cxx_compiler }}' --settings=compiler.libcxx=libstdc++
+        conan build . --output-folder=./build --build=missing --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler.libcxx=libstdc++
 
     - name: Get coverage
       working-directory: ${{ steps.strings.outputs.build-output-dir }}

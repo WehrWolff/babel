@@ -16,14 +16,11 @@ class BabelRecipe(ConanFile):
     license = "BSL-1.0"
     author = "WehrWolff <135031808+WehrWolff@users.noreply.github.com>"
     topics = ("babel", "language", "programming-language", "compiler")
-    homepage = "https://github.com/WehrWolff/babel"
+    homepage = "https://wehrwolff.github.io/babel/dev"
     url = "https://github.com/WehrWolff/babel"
     
     package_type = "application"
     settings = "os", "compiler", "build_type", "arch"
-    options = {"c_compiler": ["ANY", None], "cxx_compiler": ["ANY", None]}
-    # Default option to prevent errors on conan install, where these are not needed and/or used
-    default_options = {"c_compiler": "N/A", "cxx_compiler": "N/A"}
     languages = "C++"
 
     requires = "boost/[>=1.83.0]", "llvm-core/[>=19.1.7]"
@@ -39,6 +36,13 @@ class BabelRecipe(ConanFile):
     def configure(self):
         if self.settings.get_safe("os") == "Windows":
             self.settings.rm_safe("compiler.libcxx")
+        
+        self.options["editline"].terminal_db = "ncurses"
+
+        # Ensure that we can build from source with these additional options to fix dependency compilation errors
+        # When those are fixed these options can be removed
+        self.options["llvm-core"].with_z3 = False
+        self.options["llvm-core"].with_libedit = False
 
     def build(self):
         cmake = CMake(self)
@@ -47,8 +51,6 @@ class BabelRecipe(ConanFile):
         cmake.configure(
             variables={
                 "CMAKE_POLICY_DEFAULT_CMP0091": "NEW",
-                "CMAKE_CXX_COMPILER": self.options.cxx_compiler,
-                "CMAKE_C_COMPILER": self.options.c_compiler,
                 "CMAKE_BUILD_TYPE": self.settings.build_type,
             },
             cli_args=[
@@ -106,9 +108,3 @@ class BabelRecipe(ConanFile):
     def validate(self):
         if self.settings.os not in ["Linux", "Windows", "Macos"]:
             raise ConanInvalidConfiguration("Currently only Linux, Windows and MacOS are supported.")
-        
-        if self.options.c_compiler == None:
-            raise ConanInvalidConfiguration("The C compiler must be set. Use -o='&:c_compiler=' to specify the compiler.")
-        
-        if self.options.cxx_compiler == None:
-            raise ConanInvalidConfiguration("The C++ compiler must be set. Use -o='&:cxx_compiler=' to specify the compiler.")

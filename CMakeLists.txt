@@ -30,13 +30,13 @@ set(SOURCE_FILES
     src/shell.cpp
 )
 
-find_package(Boost 1.83.0 REQUIRED COMPONENTS algorithm)
+find_package(Boost REQUIRED)
 find_package(LLVM REQUIRED CONFIG)
 
 add_executable(babel ${SOURCE_FILES})
 target_include_directories(babel PRIVATE src)
 
-llvm_map_components_to_libnames(LLVM_LIBS core irreader support)
+llvm_map_components_to_libnames(LLVM_LIBRARIES core irreader support)
 
 target_link_libraries(babel PRIVATE ${Boost_LIBRARIES} ${LLVM_LIBRARIES})
 target_include_directories(babel PRIVATE ${LLVM_INCLUDE_DIRS})

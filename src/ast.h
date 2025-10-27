@@ -53,20 +53,14 @@ class VariableAST : public BaseAST {
     const bool isDecl;
 
     public:
-        VariableAST(const std::string &Name, const std::optional<BabelType> Type, const bool isConst, const bool isDecl) : Name(Name), Type(Type), isConst(isConst), isDecl(isDecl) {}
+        VariableAST(const std::string &Name, const std::optional<BabelType> Type, const bool isConst, const bool isDecl) : Name(Name), Type(Type), isConst(isConst), isDecl(isDecl) {
+            if (isDecl) { insertSymbol(); }
+        }
+        void insertSymbol() const;
         std::string getName() const { return Name; }
         bool getConstness() const { return isConst; }
         bool getDecl() const { return isDecl; }
         BabelType getType() const override;
-        llvm::Value *codegen() override;
-};
-
-class VariableDeclAST : public BaseAST {
-    std::vector<std::pair<std::string, std::unique_ptr<BaseAST>>> VarNames;
-    std::unique_ptr<BaseAST> Body;
-
-    public:
-        VariableDeclAST(std::vector<std::pair<std::string, std::unique_ptr<BaseAST>>> VarNames, std::unique_ptr<BaseAST> Body) : VarNames(std::move(VarNames)), Body(std::move(Body)) {}
         llvm::Value *codegen() override;
 };
 
@@ -402,6 +396,13 @@ llvm::Value *performImplicitCast(llvm::Value *val, BabelType from, BabelType to)
     babel_panic("Cannot perform illegal type cast");
 }
 
+void VariableAST::insertSymbol() const {
+    // nullptr is not viewed as having a value
+    // since we can't check using the Builder, just insert into both
+    GlobalValues[Name] = {nullptr, Type.value(), isConst};
+    NamedValues[Name] = {nullptr, Type.value(), isConst};
+}
+
 BabelType VariableAST::getType() const {
     if (Type.has_value())
         return Type.value();
@@ -438,7 +439,7 @@ llvm::Value *handleAssignment(llvm::Value* RHSVal, BabelType RHSType, BabelType 
             //babel_panic("Global variables must be initialized with constant values");
         }
 
-        if (GlobalValues.contains(VarName)) {
+        if (GlobalValues.contains(VarName) && GlobalValues.at(VarName).val != nullptr) {
             if (isDeclaration) {
                 babel_panic("Redefinition of global variable '%s'", VarName.c_str());
             }
@@ -475,22 +476,21 @@ llvm::Value *handleAssignment(llvm::Value* RHSVal, BabelType RHSType, BabelType 
         LocalSymbol Var = NamedValues[VarName];
 
         if (!Var.val) {
-            if (GlobalValues.contains(VarName)) {
+            if (GlobalValues.contains(VarName) && GlobalValues.at(VarName).val != nullptr) {
                 if (isDeclaration) {
                     babel_panic("Redefinition of global variable '%s'", VarName.c_str());
                 }
     
-                if (Var.isConstant) {
+                GlobalSymbol& existing = GlobalValues[VarName];
+                if (existing.isConstant) {
                     babel_panic("Cannot assign to constant '%s'", VarName.c_str());
                 }
 
-                auto Val = GlobalValues[VarName].val;
+                if (canImplicitCast(RHSType, existing.type))
+                    RHSVal = performImplicitCast(RHSVal, RHSType, existing.type);
 
-                if (canImplicitCast(RHSType, GlobalValues[VarName].type))
-                    RHSVal = performImplicitCast(RHSVal, RHSType, GlobalValues[VarName].type);
-
-                Builder->CreateStore(RHSVal, Val);
-                return Val;
+                Builder->CreateStore(RHSVal, existing.val);
+                return existing.val;
             }
 
             if (!isDeclaration) {
@@ -557,12 +557,12 @@ llvm::Value *BooleanAST::codegen() {
 }
 
 llvm::Value *VariableAST::codegen() {
-    if (NamedValues.contains(Name)) {
+    if (NamedValues.contains(Name) && NamedValues.at(Name).val != nullptr) {
         if (NamedValues[Name].val->getType()->isPointerTy())
             return Builder->CreateLoad(resolveLLVMType(NamedValues[Name].type), NamedValues[Name].val, Name);
         
         return NamedValues[Name].val;
-    } else if (GlobalValues.contains(Name)) {
+    } else if (GlobalValues.contains(Name) && GlobalValues.at(Name).val != nullptr) {
         if (GlobalValues[Name].val->getType()->isPointerTy())
             return Builder->CreateLoad(resolveLLVMType(GlobalValues[Name].type), GlobalValues[Name].val, Name);
         
@@ -577,53 +577,6 @@ llvm::AllocaInst *CreateEntryBlockAlloca(llvm::Function *TheFunction, llvm::Stri
     return TmpB.CreateAlloca(llvm::Type::getInt32Ty(*TheContext), nullptr, VarName); // i32 for now, change later
 }
 
-/* llvm::Value *VariableDeclAST::codegen() {
-    std::vector<llvm::AllocaInst *> OldBindings;
-
-    llvm::Function *TheFunction = Builder->GetInsertBlock()->getParent();
-
-    // Register all variables and emit their initializer.
-    for (unsigned i = 0, e = VarNames.size(); i != e; ++i) {
-        const std::string &VarName = VarNames[i].first;
-        BaseAST *Init = VarNames[i].second.get();
-
-        // Emit the initializer before adding the variable to scope, this prevents
-        // the initializer from referencing the variable itself, and permits stuff
-        // like this:
-        //  var a = 1 in
-        //    var a = a in ...   # refers to outer 'a'.
-        llvm::Value *InitVal;
-        if (Init) {
-        InitVal = Init->codegen();
-        if (!InitVal)
-            return nullptr;
-        } else { // If not specified, use 0.0.
-        InitVal = llvm::ConstantFP::get(*TheContext, llvm::APFloat(0.0));
-        }
-
-        llvm::AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, VarName);
-        Builder->CreateStore(InitVal, Alloca);
-
-        // Remember the old variable binding so that we can restore the binding when
-        // we unrecurse.
-        OldBindings.push_back(NamedValues[VarName]);
-
-        // Remember this binding.
-        NamedValues[VarName] = Alloca;
-    }
-
-    // Codegen the body, now that all vars are in scope.
-    llvm::Value *BodyVal = Body->codegen();
-    if (!BodyVal)
-        return nullptr;
-
-    // Pop all our variables from scope.
-    for (unsigned i = 0, e = VarNames.size(); i != e; ++i)
-        NamedValues[VarNames[i].first] = OldBindings[i];
-
-    // Return the body computation.
-    return BodyVal;
-} */
 
 llvm::Value *BinaryOperatorAST::codegen() {
     if (Op == "=") {
@@ -739,7 +692,7 @@ llvm::Value *GotoStmtAST::codegen() {
     // llvm::BasicBlock* DeadBB = llvm::BasicBlock::Create(*TheContext, "after_goto", Builder->GetInsertBlock()->getParent());
     // Builder->SetInsertPoint(DeadBB);
 
-    return llvm::Constant::getNullValue(llvm::Type::getVoidTy(*TheContext));
+    return nullptr; //llvm::Constant::getNullValue(llvm::Type::getVoidTy(*TheContext));
 }
 
 llvm::Value* LabelStmtAST::codegen() {
@@ -761,15 +714,15 @@ llvm::Value* LabelStmtAST::codegen() {
     Builder->CreateBr(LabelTable[Name]);
     Builder->SetInsertPoint(LabelTable[Name]);
 
-    return llvm::Constant::getNullValue(llvm::Type::getVoidTy(*TheContext));
+    return nullptr; //llvm::Constant::getNullValue(llvm::Type::getVoidTy(*TheContext));
 }
 
 llvm::Value *BlockAST::codegen() {
     llvm::Value *Last = nullptr;
     for (const auto& Stmt : Statements) {
         Last = Stmt->codegen();
-        if (!Last)
-            return nullptr;
+        //if (!Last)
+        //    return nullptr;
     }
 
     return Last;
@@ -805,7 +758,7 @@ llvm::Value *IfStmtAST::codegen() {
     // else block
     TheFunction->insert(TheFunction->end(), ElseBB);
     Builder->SetInsertPoint(ElseBB);
-    if (Else && !Else->codegen())
+    if (Else && !Else->codegen()) // panic instead
         return nullptr;
 
     Builder->CreateBr(MergeBB);
@@ -814,7 +767,7 @@ llvm::Value *IfStmtAST::codegen() {
     TheFunction->insert(TheFunction->end(), MergeBB);
     Builder->SetInsertPoint(MergeBB);
 
-    return llvm::Constant::getNullValue(llvm::Type::getVoidTy(*TheContext));
+    return nullptr; //llvm::Constant::getNullValue(llvm::Type::getVoidTy(*TheContext));
 }
 
 llvm::Value *TaskCallAST::codegen() {
