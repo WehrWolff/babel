@@ -26,6 +26,8 @@ jobs:
           version: '1.10.8'
 
       - uses: julia-actions/cache@v2
+        with:
+          cache-name: julia-cache;workflow=${{ github.workflow }};os=${{ runner.os }}
 
       - name: Install system dependencies
         run: |
