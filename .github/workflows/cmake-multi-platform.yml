@@ -140,7 +140,7 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       if: steps.cache-restore.outputs.cache-hit
       # Using `--repo` makes it so that this step doesn't require checking out the repo first.
-      run: gh cache delete --repo ${{ github.repository }} ${{ steps.cache-restore.outputs.cache-primary-key }}
+      run: gh cache delete --repo ${{ github.repository }} ${{ steps.cache-restore.outputs.cache-matched-key }}
 
     - name: Clean cache
       run: |
@@ -153,4 +153,4 @@ jobs:
       if: always()
       with:
         path: ~/.conan2
-        key: ${{ steps.cache.outputs.cache-primary-key }}
+        key: ${{ steps.cache-restore.outputs.cache-matched-key }}
