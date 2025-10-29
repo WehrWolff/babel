@@ -10,6 +10,10 @@ on:
 
 jobs:
   build:
+    # These permissions are needed to delete old caches.
+    permissions:
+      actions: write
+      contents: read
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -77,8 +81,9 @@ jobs:
         pip install conan
         ${{ matrix.cmd }}
     
-    - name: Cache Conan packages
-      uses: actions/cache@v4
+    - name: Restore Cached Conan packages
+      uses: actions/cache/restore@v4
+      id: cache-restore
       with:
         path: ~/.conan2
         key: ${{ runner.os }}-conan-${{ matrix.conan_compiler }}${{ matrix.compiler_version }}-${{ hashFiles('conanfile.py', 'CMakeLists.txt') }}
@@ -97,7 +102,7 @@ jobs:
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type.
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
@@ -116,7 +121,7 @@ jobs:
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more details.
       
       run: |
         ctest --build-config ${{ matrix.build_type }} --output-on-failure --verbose
@@ -127,3 +132,25 @@ jobs:
       uses: codecov/codecov-action@v3
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+    # Delete the old cache on hit to emulate a cache update.
+    # See https://github.com/actions/cache/issues/342.
+    - name: Delete old cache
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      if: steps.cache-restore.outputs.cache-hit
+      # Using `--repo` makes it so that this step doesn't require checking out the repo first.
+      run: gh cache delete --repo ${{ github.repository }} ${{ steps.cache-restore.outputs.cache-primary-key }}
+
+    - name: Clean cache
+      run: |
+        conan cache clean "*" --build --source --temp
+        conan remove "*" --lru=1d --confirm
+
+    - name: Save cache
+      uses: actions/cache/save@v4
+      # Save the cache even if build steps fail.
+      if: always()
+      with:
+        path: ~/.conan2
+        key: ${{ steps.cache.outputs.cache-primary-key }}

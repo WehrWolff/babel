@@ -21,6 +21,8 @@ class BabelRecipe(ConanFile):
     
     package_type = "application"
     settings = "os", "compiler", "build_type", "arch"
+    options = {"gen_coverage": [True, False]}
+    default_options = {"gen_coverage": False}
     languages = "C++"
 
     requires = "boost/[>=1.83.0]", "llvm-core/[>=19.1.7]"
@@ -64,6 +66,9 @@ class BabelRecipe(ConanFile):
         if can_run(self):
             # Note that --build-config is needed because the default Windows generator (Visual Studio) is a multi-configuration generator
             cmake.ctest(["--build-config", f"{self.settings.build_type}", "--output-on-failure", "--verbose"])
+        
+        if self.options.gen_coverage:
+            cmake.build(target="coverage")
 
     def export_sources(self):
         copy(self, "*", src=self.recipe_folder, dst=self.export_sources_folder)
