@@ -10,6 +10,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
 #include <memory>
+#include <numeric>
 #include <string>
 #include <map>
 #include <iostream>
@@ -37,179 +38,6 @@ enum class BabelType {
     Void
 };
 
-// Base class for all expression node
-class BaseAST {
-    public:
-        virtual ~BaseAST() = default;
-        virtual llvm::Value *codegen() = 0;
-        virtual BabelType getType() const { babel_panic("getType() not supported for this AST node"); }
-};
-
-// class for referencing variables
-class VariableAST : public BaseAST {
-    const std::string Name;
-    const std::optional<BabelType> Type;
-    const bool isConst;
-    const bool isDecl;
-
-    public:
-        VariableAST(const std::string &Name, const std::optional<BabelType> Type, const bool isConst, const bool isDecl) : Name(Name), Type(Type), isConst(isConst), isDecl(isDecl) {
-            if (isDecl) { insertSymbol(); }
-        }
-        void insertSymbol() const;
-        std::string getName() const { return Name; }
-        bool getConstness() const { return isConst; }
-        bool getDecl() const { return isDecl; }
-        BabelType getType() const override;
-        llvm::Value *codegen() override;
-};
-
-class BooleanAST : public BaseAST {
-    const int Val;
-
-    public:
-        explicit BooleanAST(std::string_view value) : Val(value == "TRUE" ? 1 : 0) {}
-        llvm::Value *codegen() override;
-        BabelType getType() const override { return BabelType::Boolean; }
-};
-
-// class for numeric literals which are integers
-class IntegerAST : public BaseAST {
-    const int Val;
-
-    public:
-        explicit IntegerAST(int Val) : Val(Val) {}
-        llvm::Value *codegen() override;
-        BabelType getType() const override { return BabelType::Int; }
-};
-
-class CharacterAST : public BaseAST {
-    const char Val;
-
-    public:
-        explicit CharacterAST(const char Val) : Val(Val) {}
-        llvm::Value *codegen() override;
-        BabelType getType() const override { return BabelType::Character; }
-};
-
-class CStringAST : public BaseAST {
-    const std::string Val;
-
-    public:
-        explicit CStringAST(const std::string& Val) : Val(Val) {}
-        llvm::Value *codegen() override;
-        BabelType getType() const override { return BabelType::CString; }
-};
-
-// class for numeric literals which are floating points
-class FloatingPointAST : public BaseAST {
-    const double Val;
-
-    public:
-        explicit FloatingPointAST(double Val) : Val(Val) {}
-        llvm::Value *codegen() override;
-        BabelType getType() const override { return BabelType::Float64; }
-};
-
-// class for when binary operators are used
-class BinaryOperatorAST : public BaseAST {
-    const std::string Op;
-    std::unique_ptr<BaseAST> LHS;
-    std::unique_ptr<BaseAST> RHS;
-
-    public:
-        BinaryOperatorAST(const std::string& Op, std::unique_ptr<BaseAST> LHS, std::unique_ptr<BaseAST> RHS) : Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
-        llvm::Value *codegen() override;
-        BabelType getType() const override;
-};
-
-class UnaryOperatorAST : public BaseAST {
-    const std::string Op;
-    std::unique_ptr<BaseAST> Val;
-
-    public:
-        UnaryOperatorAST(const std::string& Op, std::unique_ptr<BaseAST> Val) : Op(Op), Val(std::move(Val)) {}
-        llvm::Value *codegen() override;
-};
-
-class ReturnStmtAST : public BaseAST {
-    std::unique_ptr<BaseAST> Expr;
-
-    public:
-        explicit ReturnStmtAST(std::unique_ptr<BaseAST> Expr) : Expr(std::move(Expr)) {}
-        llvm::Value *codegen() override;
-};
-
-class GotoStmtAST : public BaseAST {
-    std::string Target;
-
-    public:
-        explicit GotoStmtAST(const std::string& Target) : Target(Target) {}
-        llvm::Value *codegen() override;
-};
-
-class LabelStmtAST : public BaseAST {
-    std::string Name;
-
-    public:
-        explicit LabelStmtAST(const std::string& Name) : Name(Name) {}
-        llvm::Value *codegen() override;
-};
-
-class BlockAST : public BaseAST {
-    std::deque<std::unique_ptr<BaseAST>> Statements;
-
-    public:
-        explicit BlockAST(std::deque<std::unique_ptr<BaseAST>> Statements) : Statements(std::move(Statements)) {}
-        llvm::Value *codegen() override;
-};
-
-class IfStmtAST : public BaseAST {
-    std::unique_ptr<BaseAST> Cond;
-    std::unique_ptr<BaseAST> Then;
-    std::unique_ptr<BaseAST> Else;
-
-    public:
-        IfStmtAST(std::unique_ptr<BaseAST> Cond, std::unique_ptr<BaseAST> Then, std::unique_ptr<BaseAST> Else) : Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
-        llvm::Value *codegen() override;
-};
-
-// class for when a function is called
-class TaskCallAST : public BaseAST {
-    const std::string callsTo;
-    std::deque<std::unique_ptr<BaseAST>> Args;
-
-    public:
-        TaskCallAST(const std::string &callsTo, std::deque<std::unique_ptr<BaseAST>> Args) : callsTo(callsTo), Args(std::move(Args)) {}
-        BabelType getType() const override;
-        llvm::Value *codegen() override;
-};
-
-// class for the function header (definition)
-class TaskHeaderAST : public BaseAST {
-    const std::string Name;
-    std::deque<std::string> Args;
-    std::deque<BabelType> ArgTypes;
-    BabelType ReturnType;
-
-    public:
-        TaskHeaderAST(const std::string &Name, std::deque<std::string> Args, std::deque<BabelType> ArgTypes, BabelType ReturnType) : Name(Name), Args(std::move(Args)), ArgTypes(std::move(ArgTypes)), ReturnType(ReturnType) {}
-        llvm::Function *codegen() override;
-        const std::string &getName() const { return Name; }
-        const std::deque<BabelType> &getArgTypes() const { return ArgTypes; }
-        const BabelType &getRetType() const { return ReturnType; }
-};
-
-// class for the function definition
-class TaskAST : public BaseAST {
-    std::unique_ptr<TaskHeaderAST> Header;
-    std::unique_ptr<BaseAST> Body;
-
-    public:
-        TaskAST(std::unique_ptr<TaskHeaderAST> Header, std::unique_ptr<BaseAST> Body) : Header(std::move(Header)), Body(std::move(Body)) {}
-        llvm::Function *codegen() override;
-};
-
 struct GlobalSymbol {
     llvm::GlobalVariable* val;
     BabelType type;
@@ -234,6 +62,7 @@ static std::map<std::string, LocalSymbol> NamedValues;
 static std::map<std::string, GlobalSymbol> GlobalValues;
 static std::map<std::string, llvm::BasicBlock*> LabelTable;
 static std::map<std::string, TaskTypeInfo> TaskTable;
+static std::map<std::string, bool> PolymorphTable;
 
 llvm::Value *LogError(const char *str) {
     std::cerr << str << '\n';
@@ -395,6 +224,199 @@ llvm::Value *performImplicitCast(llvm::Value *val, BabelType from, BabelType to)
 
     babel_panic("Cannot perform illegal type cast");
 }
+
+// Base class for all expression node
+class BaseAST {
+    public:
+        virtual ~BaseAST() = default;
+        virtual llvm::Value *codegen() = 0;
+        virtual BabelType getType() const { babel_panic("getType() not supported for this AST node"); }
+};
+
+// class for referencing variables
+class VariableAST : public BaseAST {
+    const std::string Name;
+    const std::optional<BabelType> Type;
+    const bool isConst;
+    const bool isDecl;
+
+    public:
+        VariableAST(const std::string &Name, const std::optional<BabelType> Type, const bool isConst, const bool isDecl) : Name(Name), Type(Type), isConst(isConst), isDecl(isDecl) {
+            if (isDecl) { insertSymbol(); }
+        }
+        void insertSymbol() const;
+        std::string getName() const { return Name; }
+        bool getConstness() const { return isConst; }
+        bool getDecl() const { return isDecl; }
+        BabelType getType() const override;
+        llvm::Value *codegen() override;
+};
+
+class BooleanAST : public BaseAST {
+    const int Val;
+
+    public:
+        explicit BooleanAST(std::string_view value) : Val(value == "TRUE" ? 1 : 0) {}
+        llvm::Value *codegen() override;
+        BabelType getType() const override { return BabelType::Boolean; }
+};
+
+// class for numeric literals which are integers
+class IntegerAST : public BaseAST {
+    const int Val;
+
+    public:
+        explicit IntegerAST(int Val) : Val(Val) {}
+        llvm::Value *codegen() override;
+        BabelType getType() const override { return BabelType::Int; }
+};
+
+class CharacterAST : public BaseAST {
+    const char Val;
+
+    public:
+        explicit CharacterAST(const char Val) : Val(Val) {}
+        llvm::Value *codegen() override;
+        BabelType getType() const override { return BabelType::Character; }
+};
+
+class CStringAST : public BaseAST {
+    const std::string Val;
+
+    public:
+        explicit CStringAST(const std::string& Val) : Val(Val) {}
+        llvm::Value *codegen() override;
+        BabelType getType() const override { return BabelType::CString; }
+};
+
+// class for numeric literals which are floating points
+class FloatingPointAST : public BaseAST {
+    const double Val;
+
+    public:
+        explicit FloatingPointAST(double Val) : Val(Val) {}
+        llvm::Value *codegen() override;
+        BabelType getType() const override { return BabelType::Float64; }
+};
+
+// class for when binary operators are used
+class BinaryOperatorAST : public BaseAST {
+    const std::string Op;
+    std::unique_ptr<BaseAST> LHS;
+    std::unique_ptr<BaseAST> RHS;
+
+    public:
+        BinaryOperatorAST(const std::string& Op, std::unique_ptr<BaseAST> LHS, std::unique_ptr<BaseAST> RHS) : Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
+        llvm::Value *codegen() override;
+        BabelType getType() const override;
+};
+
+class UnaryOperatorAST : public BaseAST {
+    const std::string Op;
+    std::unique_ptr<BaseAST> Val;
+
+    public:
+        UnaryOperatorAST(const std::string& Op, std::unique_ptr<BaseAST> Val) : Op(Op), Val(std::move(Val)) {}
+        llvm::Value *codegen() override;
+};
+
+class ReturnStmtAST : public BaseAST {
+    std::unique_ptr<BaseAST> Expr;
+
+    public:
+        explicit ReturnStmtAST(std::unique_ptr<BaseAST> Expr) : Expr(std::move(Expr)) {}
+        llvm::Value *codegen() override;
+};
+
+class GotoStmtAST : public BaseAST {
+    std::string Target;
+
+    public:
+        explicit GotoStmtAST(const std::string& Target) : Target(Target) {}
+        llvm::Value *codegen() override;
+};
+
+class LabelStmtAST : public BaseAST {
+    std::string Name;
+
+    public:
+        explicit LabelStmtAST(const std::string& Name) : Name(Name) {}
+        llvm::Value *codegen() override;
+};
+
+class BlockAST : public BaseAST {
+    std::deque<std::unique_ptr<BaseAST>> Statements;
+
+    public:
+        explicit BlockAST(std::deque<std::unique_ptr<BaseAST>> Statements) : Statements(std::move(Statements)) {}
+        llvm::Value *codegen() override;
+};
+
+class IfStmtAST : public BaseAST {
+    std::unique_ptr<BaseAST> Cond;
+    std::unique_ptr<BaseAST> Then;
+    std::unique_ptr<BaseAST> Else;
+
+    public:
+        IfStmtAST(std::unique_ptr<BaseAST> Cond, std::unique_ptr<BaseAST> Then, std::unique_ptr<BaseAST> Else) : Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
+        llvm::Value *codegen() override;
+};
+
+// class for when a function is called
+class TaskCallAST : public BaseAST {
+    std::string callsTo;
+    std::deque<std::unique_ptr<BaseAST>> Args;
+
+    public:
+        TaskCallAST(const std::string &callsTo, std::deque<std::unique_ptr<BaseAST>> Args) : callsTo(callsTo), Args(std::move(Args)) {}
+        BabelType getType() const override;
+        llvm::Value *codegen() override;
+};
+
+// class for the function header (definition)
+class TaskHeaderAST : public BaseAST {
+    std::string Name;
+    std::deque<std::string> Args;
+    std::deque<BabelType> ArgTypes;
+    BabelType ReturnType;
+
+    public:
+        TaskHeaderAST(const std::string &Name, std::deque<std::string> Args, std::deque<BabelType> ArgTypes, BabelType ReturnType) : Name(Name), Args(std::move(Args)), ArgTypes(std::move(ArgTypes)), ReturnType(ReturnType) {
+            TaskTable[Name] = {this->ArgTypes, ReturnType};
+            PolymorphTable[Name] = PolymorphTable.contains(Name);
+        }
+        llvm::Function *codegen() override;
+        const std::string &getName() const { return Name; }
+        const std::deque<BabelType> &getArgTypes() const { return ArgTypes; }
+        const BabelType &getRetType() const { return ReturnType; }
+        void update() {
+            if (PolymorphTable.contains(Name) && PolymorphTable.at(Name)) {
+                auto underscore_fold = [](std::string a, BabelType b) { return std::move(a) + '_' + getBabelTypeName(b); };
+ 
+                std::string typeinfo = std::accumulate(std::next(ArgTypes.begin()), ArgTypes.end(), getBabelTypeName(ArgTypes[0]), underscore_fold);
+
+                auto node_handle = TaskTable.extract(Name);
+                if (!node_handle.empty()) {
+                    node_handle.key() = std::format("{}.polymorphic.{}", Name, typeinfo);
+                    node_handle.mapped() = {ArgTypes, ReturnType};
+                    TaskTable.insert(std::move(node_handle));
+                } else {
+                    TaskTable[std::format("{}.polymorphic.{}", Name, typeinfo)] = {ArgTypes, ReturnType};
+                }
+                Name = std::format("{}.polymorphic.{}", Name, typeinfo);
+            }
+        }
+};
+
+// class for the function definition
+class TaskAST : public BaseAST {
+    std::unique_ptr<TaskHeaderAST> Header;
+    std::unique_ptr<BaseAST> Body;
+
+    public:
+        TaskAST(std::unique_ptr<TaskHeaderAST> Header, std::unique_ptr<BaseAST> Body) : Header(std::move(Header)), Body(std::move(Body)) {}
+        llvm::Function *codegen() override;
+};
 
 void VariableAST::insertSymbol() const {
     // nullptr is not viewed as having a value
@@ -673,9 +695,6 @@ llvm::Value *ReturnStmtAST::codegen() {
         Builder->CreateRetVoid();
     }
 
-    // After return, future instructions in the block are dead, so create a new dummy block to prevent further emission
-    //llvm::BasicBlock *AfterRetBB = llvm::BasicBlock::Create(*TheContext, "afterret", TheFunction);
-    //Builder->SetInsertPoint(AfterRetBB);
     return nullptr;
 }
 
@@ -773,6 +792,28 @@ llvm::Value *IfStmtAST::codegen() {
 llvm::Value *TaskCallAST::codegen() {
     if (callsTo == "main") babel_panic("Calling main is not allowed, as the programs entry point it is invoked automatically");
 
+    if (PolymorphTable.at(callsTo)) {
+        auto underscore_fold = [](std::string a, const std::unique_ptr<BaseAST>& b) { return std::move(a) + '_' + getBabelTypeName(b->getType()); };
+ 
+        std::string typeinfo = std::accumulate(std::next(Args.begin()), Args.end(), getBabelTypeName(Args[0]->getType()), underscore_fold);
+
+        std::string name = std::format("{}.polymorphic.{}", callsTo, typeinfo);
+        if (!TaskTable.contains(name)) {
+            std::string expected = "";
+            for (const auto&[key, value] : TaskTable) {
+                // TODO: check error msg
+                if (key.starts_with(callsTo + ".polymorphic")) {
+                    std::vector<std::string> strArgs;
+                    std::ranges::transform(value.args, std::back_inserter(strArgs), [](BabelType t) { return getBabelTypeName(t); });
+                    expected += std::format("({})\n", boost::algorithm::join(strArgs, ", "));
+                }
+            }
+            babel_panic("Task '%s' was called with argument list %s but only the following were valid:\n%s", callsTo.c_str(), typeinfo.c_str(), expected.c_str());
+        }
+
+        callsTo = name;
+    }
+
     llvm::Function *CalleF = TheModule->getFunction(callsTo);
     if (!CalleF) babel_panic("Unknown Task '%s' referenced", callsTo.c_str());
 
@@ -785,7 +826,6 @@ llvm::Value *TaskCallAST::codegen() {
             val = performImplicitCast(val, Args[i]->getType(), TaskTable.at(callsTo).args[i]);
         
         ArgsV.push_back(val);
-        //if (!ArgsV.back()) return nullptr;
     }
 
     if (TaskTable.at(callsTo).ret == BabelType::Void)
@@ -794,6 +834,7 @@ llvm::Value *TaskCallAST::codegen() {
 }
 
 llvm::Function *TaskHeaderAST::codegen() {
+    update();
     std::vector<llvm::Type*> Types;
     //std::ranges::transform(ArgTypes, Types.begin(), [](const BabelType& type) { return resolveLLVMType(type); });
     for (const BabelType& type : ArgTypes) {
@@ -802,8 +843,6 @@ llvm::Function *TaskHeaderAST::codegen() {
 
     llvm::FunctionType *FT = llvm::FunctionType::get(resolveLLVMType(ReturnType), Types, false);
     llvm::Function *F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, Name, TheModule.get());
-
-    TaskTable[Name] = {ArgTypes, ReturnType};
 
     unsigned int idx = 0;
     for (auto &Arg : F->args()) {
@@ -814,6 +853,7 @@ llvm::Function *TaskHeaderAST::codegen() {
 }
 
 llvm::Function *TaskAST::codegen() {
+    Header->update();
     llvm::Function *TheFunction = TheModule->getFunction(Header->getName());
     if (!TheFunction) TheFunction = Header->codegen();
     if (!TheFunction) return nullptr;
