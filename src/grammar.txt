@@ -21,6 +21,7 @@ simple_stmt         : NOOP
                     | raise_stmt
                     | import_stmt
                     | assignment
+                    | element_assignment
                     | function_call
 
 goto_stmt           : GOTO VAR
@@ -33,6 +34,8 @@ return_stmt         : RETURN comma_values
 raise_stmt          : RAISE expression
 
 import_stmt         : IMPORT comma_values
+
+element_assignment  : VAR LSQUARE expression RSQUARE assignment_operator expression
 
 assignment          : VAR assignment_operator expression
                     | VARDECL VAR assignment_operator expression
@@ -52,7 +55,16 @@ assignment_operator : EQUALS
                     | BIT_AND_EQUALS
                     | BIT_XOR_EQUALS
 
-type_spec           : COLON TYPE
+type_spec           : COLON type
+
+type                : TYPE
+                    | VAR LT generic_list GT
+
+generic             : type
+                    | atom
+
+generic_list        : generic 
+                    | generic COMMA generic_list
 
 compound_stmt       : task_def
                     | class_def
@@ -68,11 +80,11 @@ args                : VAR type_spec
                     | VAR type_spec EQUALS expression
                     | args COMMA args
 
-task_header         : TASK VAR LPAREN RPAREN RARR TYPE DO
-                    | TASK VAR LPAREN args RPAREN RARR TYPE DO
+task_header         : TASK VAR LPAREN RPAREN RARR type DO
+                    | TASK VAR LPAREN args RPAREN RARR type DO
 
-extern_task         : EXTERN TASK VAR LPAREN args RPAREN RARR TYPE
-                    | EXTERN TASK VAR LPAREN RPAREN RARR TYPE
+extern_task         : EXTERN TASK VAR LPAREN args RPAREN RARR type
+                    | EXTERN TASK VAR LPAREN RPAREN RARR type
 
 task_def            : task_header block END
                     | extern_task

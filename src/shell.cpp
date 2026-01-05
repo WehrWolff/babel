@@ -187,6 +187,7 @@ int main(int argc, char* argv[]) {
 
     llvm::outs() << "=== LLVM IR Dump ===\n";
     TheModule->print(llvm::outs(), nullptr);
+    llvm::verifyModule(*TheModule, &llvm::errs());
     
     return 0;
 }

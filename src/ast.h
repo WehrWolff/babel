@@ -19,7 +19,8 @@
 
 #include "util.hpp"
 
-enum class BabelType {
+// TODO: move to its own header file: typing.h
+enum class BasicType {
     Int,
     Int8,
     Int16,
@@ -37,6 +38,71 @@ enum class BabelType {
     CString,
     Void
 };
+
+struct BabelType;
+struct ArrayType {
+    const BabelType* inner;
+    size_t size;
+
+    bool operator==(const ArrayType& that) const;
+};
+
+struct BabelType {
+    std::variant<BasicType, ArrayType> type;
+
+    static BabelType Int() { return BabelType{BasicType::Int}; }
+    static BabelType Int8() { return BabelType{BasicType::Int8}; }
+    static BabelType Int16() { return BabelType{BasicType::Int16}; }
+    static BabelType Int32() { return BabelType{BasicType::Int32}; }
+    static BabelType Int64() { return BabelType{BasicType::Int64}; }
+    static BabelType Int128() { return BabelType{BasicType::Int128}; }
+    static BabelType Float() { return BabelType{BasicType::Float}; }
+    static BabelType Float16() { return BabelType{BasicType::Float16}; }
+    static BabelType Float32() { return BabelType{BasicType::Float32}; }
+    static BabelType Float64() { return BabelType{BasicType::Float64}; }
+    static BabelType Float128() { return BabelType{BasicType::Float128}; }
+    static BabelType Boolean() { return BabelType{BasicType::Boolean}; }
+    static BabelType Character() { return BabelType{BasicType::Character}; }
+    static BabelType CString() { return BabelType{BasicType::CString}; }
+    static BabelType Void() { return BabelType{BasicType::Void}; }
+    static BabelType Array(const BabelType* inner, size_t size) { return BabelType{ArrayType{inner, size}}; }
+
+    bool isBasic() const { return std::holds_alternative<BasicType>(type); }
+    bool isArray() const { return std::holds_alternative<ArrayType>(type); }
+
+    BasicType getBasic() const { return std::get<BasicType>(type); }
+    ArrayType getArray() const { return std::get<ArrayType>(type); }
+
+    bool operator==(const BabelType& that) const = default;
+};
+
+bool ArrayType::operator==(const ArrayType& that) const = default;
+template <>
+struct std::hash<ArrayType> {
+    size_t operator()(const ArrayType& a) const {
+        size_t seed = 0;
+        boost::hash_combine(seed, *a.inner);
+        boost::hash_combine(seed, a.size);
+        return seed;
+    }
+};
+template <>
+struct std::hash<BabelType> {
+    size_t operator()(const BabelType& t) const {
+        return boost::hash_value(t.type);
+    }
+};
+
+inline std::size_t hash_value(const ArrayType& a) {
+    std::size_t seed = 0;
+    boost::hash_combine(seed, *a.inner);
+    boost::hash_combine(seed, a.size);
+    return seed;
+}
+
+inline std::size_t hash_value(const BabelType& t) {
+    return boost::hash_value(t.type); // variant hash
+}
 
 struct GlobalSymbol {
     llvm::GlobalVariable* val;
@@ -56,8 +122,8 @@ struct TaskTypeInfo {
 };
 
 static std::unique_ptr<llvm::LLVMContext> TheContext;
-static std::unique_ptr<llvm::IRBuilder<>> Builder;
 static std::unique_ptr<llvm::Module> TheModule;
+static std::unique_ptr<llvm::IRBuilder<>> Builder;
 static std::map<std::string, LocalSymbol> NamedValues;
 static std::map<std::string, GlobalSymbol> GlobalValues;
 static std::map<std::string, llvm::BasicBlock*> LabelTable;
@@ -70,99 +136,110 @@ llvm::Value *LogError(const char *str) {
 }
 
 llvm::Type *resolveLLVMType(BabelType type) {
-    using enum BabelType;
-    switch (type) {
-        case Int:
-        case Int32:
-            return llvm::Type::getInt32Ty(*TheContext);
-        case Int8:
-            return llvm::Type::getInt8Ty(*TheContext);
-        case Int16:
-            return llvm::Type::getInt16Ty(*TheContext);
-        case Int64:
-            return llvm::Type::getInt64Ty(*TheContext);
-        case Int128:
-            return llvm::Type::getInt128Ty(*TheContext);
+    using enum BasicType;
 
-        case Float:
-        case Float32:
-            return llvm::Type::getFloatTy(*TheContext);
-        case Float16:
-            return llvm::Type::getHalfTy(*TheContext);
-        case Float64:
-            return llvm::Type::getDoubleTy(*TheContext);
-        case Float128:
-            return llvm::Type::getFP128Ty(*TheContext);
+    if (type.isBasic()) {
+        switch (type.getBasic()) {
+            case Int:
+            case Int32:
+                return llvm::Type::getInt32Ty(*TheContext);
+            case Int8:
+                return llvm::Type::getInt8Ty(*TheContext);
+            case Int16:
+                return llvm::Type::getInt16Ty(*TheContext);
+            case Int64:
+                return llvm::Type::getInt64Ty(*TheContext);
+            case Int128:
+                return llvm::Type::getInt128Ty(*TheContext);
 
-        case Boolean:
-            return llvm::Type::getInt1Ty(*TheContext);
+            case Float:
+            case Float32:
+                return llvm::Type::getFloatTy(*TheContext);
+            case Float16:
+                return llvm::Type::getHalfTy(*TheContext);
+            case Float64:
+                return llvm::Type::getDoubleTy(*TheContext);
+            case Float128:
+                return llvm::Type::getFP128Ty(*TheContext);
 
-        case CString:
-            return llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*TheContext));
+            case Boolean:
+                return llvm::Type::getInt1Ty(*TheContext);
 
-        case Void:
-            return llvm::Type::getVoidTy(*TheContext);
+            case CString:
+                return llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*TheContext));
 
-        default:
-            babel_panic("Unknow type");
+            case Void:
+                return llvm::Type::getVoidTy(*TheContext);
+
+            default:
+                babel_panic("Unknow type");
+        }
     }
+    
+    return llvm::ArrayType::get(resolveLLVMType(*type.getArray().inner), type.getArray().size);
 }
 
 BabelType getBabelType(const std::string& name) {
     // ignore optionals, arrays and template stuff for now
 
-
-    using enum BabelType;
     const std::unordered_map<std::string, BabelType> TypeMap = {
-        {"int", Int},
-        {"int8", Int8},
-        {"int16", Int16},
-        {"int32", Int32},
-        {"int64", Int64},
-        {"int128", Int128},
-        {"float", Float},
-        {"float16", Float16},
-        {"float32", Float32},
-        {"float64", Float64},
-        {"float128", Float128},
-        {"bool", Boolean},
-        {"char", Character},
-        {"cstr", CString},
-        {"void", Void},
+        {"int", BabelType::Int()},
+        {"int8", BabelType::Int8()},
+        {"int16", BabelType::Int16()},
+        {"int32", BabelType::Int32()},
+        {"int64", BabelType::Int64()},
+        {"int128", BabelType::Int128()},
+        {"float", BabelType::Float()},
+        {"float16", BabelType::Float16()},
+        {"float32", BabelType::Float32()},
+        {"float64", BabelType::Float64()},
+        {"float128", BabelType::Float128()},
+        {"bool", BabelType::Boolean()},
+        {"char", BabelType::Character()},
+        {"cstr", BabelType::CString()},
+        {"void", BabelType::Void()},
     };
 
     return TypeMap.at(name);
 }
 
 std::string getBabelTypeName(BabelType type) {
-    using enum BabelType;
-    switch (type) {
-        case Int:
-        case Int32:     return "int32";
-        case Int8:      return "int8";
-        case Int16:     return "int16";
-        case Int64:     return "int64";
-        case Int128:    return "int128";
+    using enum BasicType;
 
-        case Float:
-        case Float32:   return "float32";
-        case Float16:   return "float16";
-        case Float64:   return "float64";
-        case Float128:  return "float128";
+    if (type.isBasic()) {
+        switch (type.getBasic()) {
+            case Int:
+            case Int32:     return "int32";
+            case Int8:      return "int8";
+            case Int16:     return "int16";
+            case Int64:     return "int64";
+            case Int128:    return "int128";
 
-        case Boolean:   return "bool";
-        case Character: return "char";
-        case CString:   return "cstring";
-        case Void:      return "void";
+            case Float:
+            case Float32:   return "float32";
+            case Float16:   return "float16";
+            case Float64:   return "float64";
+            case Float128:  return "float128";
 
-        default:
-            babel_panic("Unknown type");
+            case Boolean:   return "bool";
+            case Character: return "char";
+            case CString:   return "cstring";
+            case Void:      return "void";
+
+            default:
+                babel_panic("Unknown type");
+        }
+    } else if (type.isArray()) {
+        return "Array<" + getBabelTypeName(*type.getArray().inner) + ">";
     }
 }
 
 bool isBabelInteger(BabelType type) {
-    using enum BabelType;
-    switch (type) {
+    using enum BasicType;
+    if (!type.isBasic())
+        return false;
+
+    switch (type.getBasic()) {
         case Int8:
         case Int16:
         case Int32:
@@ -177,8 +254,11 @@ bool isBabelInteger(BabelType type) {
 }
 
 bool isBabelFloat(BabelType type) {
-    using enum BabelType;
-    switch (type) {
+    using enum BasicType;
+    if (!type.isBasic())
+        return false;
+
+    switch (type.getBasic()) {
         case Float16:
         case Float32:
         case Float64:
@@ -196,11 +276,11 @@ bool canImplicitCast(BabelType from, BabelType to) {
         return true;
 
     std::unordered_map<BabelType, std::vector<BabelType>> ImplicitCastTable = {
-        {BabelType::Int8, {BabelType::Int16, BabelType::Int32, BabelType::Int64, BabelType::Int128, BabelType::Float16, BabelType::Float32, BabelType::Float64, BabelType::Float128}},
-        {BabelType::Int16, {BabelType::Int32, BabelType::Int64, BabelType::Int128, BabelType::Float16, BabelType::Float32, BabelType::Float64, BabelType::Float128}},
-        {BabelType::Int32, {BabelType::Int64, BabelType::Int128, BabelType::Float32, BabelType::Float64, BabelType::Float128}},
-        {BabelType::Int64, {BabelType::Int128, BabelType::Float64, BabelType::Float128}},
-        {BabelType::Int128, {BabelType::Float128}},
+        {BabelType::Int8(), {BabelType::Int16(), BabelType::Int32(), BabelType::Int64(), BabelType::Int128(), BabelType::Float16(), BabelType::Float32(), BabelType::Float64(), BabelType::Float128()}},
+        {BabelType::Int16(), {BabelType::Int32(), BabelType::Int64(), BabelType::Int128(), BabelType::Float16(), BabelType::Float32(), BabelType::Float64(), BabelType::Float128()}},
+        {BabelType::Int32(), {BabelType::Int64(), BabelType::Int128(), BabelType::Float32(), BabelType::Float64(), BabelType::Float128()}},
+        {BabelType::Int64(), {BabelType::Int128(), BabelType::Float64(), BabelType::Float128()}},
+        {BabelType::Int128(), {BabelType::Float128()}},
         // Character, CString, String
     };
     
@@ -237,12 +317,16 @@ class BaseAST {
 class VariableAST : public BaseAST {
     const std::string Name;
     const std::optional<BabelType> Type;
-    const bool isConst;
+    bool isConst;
     const bool isDecl;
+    // bool requiresLValue = false;
 
     public:
-        VariableAST(const std::string &Name, const std::optional<BabelType> Type, const bool isConst, const bool isDecl) : Name(Name), Type(Type), isConst(isConst), isDecl(isDecl) {
+        VariableAST(const std::string &Name, const std::optional<BabelType>& Type, const bool isConst, const bool isDecl) : Name(Name), Type(Type), isConst(isConst), isDecl(isDecl) {
             if (isDecl) { insertSymbol(); }
+            else { this->isConst = GlobalValues.at(Name).isConstant; }
+            // TODO: each variable auto updates itself so the node knows wether its variable is constant or not
+            // this allows for a significant simplification of the handleAssignment method
         }
         void insertSymbol() const;
         std::string getName() const { return Name; }
@@ -250,6 +334,12 @@ class VariableAST : public BaseAST {
         bool getDecl() const { return isDecl; }
         BabelType getType() const override;
         llvm::Value *codegen() override;
+        /* llvm::Value *requireLValue() {
+            requiresLValue = true;
+            llvm::Value* lVal = codegen();
+            requiresLValue = false;
+            return lVal;
+        } */
 };
 
 class BooleanAST : public BaseAST {
@@ -258,7 +348,7 @@ class BooleanAST : public BaseAST {
     public:
         explicit BooleanAST(std::string_view value) : Val(value == "TRUE" ? 1 : 0) {}
         llvm::Value *codegen() override;
-        BabelType getType() const override { return BabelType::Boolean; }
+        BabelType getType() const override { return BabelType::Boolean(); }
 };
 
 // class for numeric literals which are integers
@@ -268,7 +358,7 @@ class IntegerAST : public BaseAST {
     public:
         explicit IntegerAST(int Val) : Val(Val) {}
         llvm::Value *codegen() override;
-        BabelType getType() const override { return BabelType::Int; }
+        BabelType getType() const override { return BabelType::Int(); }
 };
 
 class CharacterAST : public BaseAST {
@@ -277,7 +367,7 @@ class CharacterAST : public BaseAST {
     public:
         explicit CharacterAST(const char Val) : Val(Val) {}
         llvm::Value *codegen() override;
-        BabelType getType() const override { return BabelType::Character; }
+        BabelType getType() const override { return BabelType::Character(); }
 };
 
 class CStringAST : public BaseAST {
@@ -286,7 +376,7 @@ class CStringAST : public BaseAST {
     public:
         explicit CStringAST(const std::string& Val) : Val(Val) {}
         llvm::Value *codegen() override;
-        BabelType getType() const override { return BabelType::CString; }
+        BabelType getType() const override { return BabelType::CString(); }
 };
 
 // class for numeric literals which are floating points
@@ -296,7 +386,43 @@ class FloatingPointAST : public BaseAST {
     public:
         explicit FloatingPointAST(double Val) : Val(Val) {}
         llvm::Value *codegen() override;
-        BabelType getType() const override { return BabelType::Float64; }
+        BabelType getType() const override { return BabelType::Float64(); }
+};
+
+class ArrayAST : public BaseAST {
+    const std::deque<std::unique_ptr<BaseAST>> Val;
+    const size_t Size;
+    const BabelType Inner;
+
+    public:
+        explicit ArrayAST(std::deque<std::unique_ptr<BaseAST>> _Val) : Val(std::move(_Val)), Size(Val.size()) {
+            BabelType Inner = Size > 0 ? Val.front()->getType() : BabelType::Int(); // arbitrary type for empty arrays
+            // TODO: type casting should be allowed, e.g. Array(1, 2.9, 4)
+            for (const auto& elmnt : Val) {
+                if (Inner != elmnt->getType())
+                    babel_panic("Array elements must share the same type");
+            }
+        }
+        llvm::Value* codegen() override;
+        BabelType getType() const override { return BabelType::Array(&Inner, Size); }
+};
+
+class AccessElementOperatorAST : public BaseAST {
+    std::unique_ptr<VariableAST> Val;
+    std::unique_ptr<BaseAST> Index;
+    bool requiresLValue = false;
+
+    public:
+        AccessElementOperatorAST(std::unique_ptr<VariableAST> Val, std::unique_ptr<BaseAST> Index) : Val(std::move(Val)), Index(std::move(Index)) {}
+        llvm::Value *codegen() override;
+        BabelType getType() const override { return *(Val->getType().getArray().inner); }
+        llvm::Value *requireLValue() {
+            requiresLValue = true;
+            llvm::Value* lVal = codegen();
+            assert(lVal->getType()->isPointerTy() && "requireLValue returned non-pointer");
+            requiresLValue = false;
+            return lVal;
+        }
 };
 
 // class for when binary operators are used
@@ -544,8 +670,17 @@ llvm::Value *handleAssignment(llvm::Value* RHSVal, BabelType RHSType, BabelType 
     }
 }
 
+llvm::Value *ArrayAST::codegen() {
+    std::vector<llvm::Constant*> Args;
+    for (const auto& elmnt : Val) {
+        Args.push_back(llvm::cast<llvm::Constant>(elmnt->codegen()));
+    }
+
+    return llvm::ConstantArray::get(llvm::ArrayType::get(resolveLLVMType(Inner), Size), Args);
+}
+
 llvm::Value *FloatingPointAST::codegen() {
-    return llvm::ConstantFP::get(*TheContext, llvm::APFloat(Val));
+    return llvm::ConstantFP::get(*TheContext, llvm::APFloat((float)Val));
 }
 
 llvm::Value *IntegerAST::codegen() {
@@ -568,8 +703,8 @@ llvm::Value *CStringAST::codegen() {
         ConstStr,
         ".cstr");
 
-    llvm::Constant *Zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
-    llvm::Constant *Indices[] = {Zero, Zero};
+    llvm::Constant* Zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
+    llvm::ArrayRef Indices = {Zero, Zero};
 
     return llvm::ConstantExpr::getInBoundsGetElementPtr(ConstStr->getType(), GV, Indices);
 }
@@ -580,12 +715,12 @@ llvm::Value *BooleanAST::codegen() {
 
 llvm::Value *VariableAST::codegen() {
     if (NamedValues.contains(Name) && NamedValues.at(Name).val != nullptr) {
-        if (NamedValues[Name].val->getType()->isPointerTy())
+        if (NamedValues[Name].val->getType()->isPointerTy() && !GlobalValues[Name].type.isArray())
             return Builder->CreateLoad(resolveLLVMType(NamedValues[Name].type), NamedValues[Name].val, Name);
         
         return NamedValues[Name].val;
     } else if (GlobalValues.contains(Name) && GlobalValues.at(Name).val != nullptr) {
-        if (GlobalValues[Name].val->getType()->isPointerTy())
+        if (GlobalValues[Name].val->getType()->isPointerTy() && !GlobalValues[Name].type.isArray())
             return Builder->CreateLoad(resolveLLVMType(GlobalValues[Name].type), GlobalValues[Name].val, Name);
         
         return GlobalValues[Name].val;
@@ -594,21 +729,17 @@ llvm::Value *VariableAST::codegen() {
     }
 }
 
-llvm::AllocaInst *CreateEntryBlockAlloca(llvm::Function *TheFunction, llvm::StringRef VarName) {
-    llvm::IRBuilder<> TmpB(&TheFunction->getEntryBlock(), TheFunction->getEntryBlock().begin());
-    return TmpB.CreateAlloca(llvm::Type::getInt32Ty(*TheContext), nullptr, VarName); // i32 for now, change later
-}
-
-
 llvm::Value *BinaryOperatorAST::codegen() {
-    if (Op == "=") {
-        // LHS must be a variable
-        const auto *Var = dynamic_cast<VariableAST*>(LHS.get());
-        if (!Var)
-            babel_panic("Destination of '=' must be a variable");
-
-        llvm::Value *RHSVal = RHS->codegen();
-        return handleAssignment(RHSVal, RHS->getType(), Var->getType(), Var->getName(), Var->getConstness(), Var->getDecl());
+    if (Op == "=") {        
+        if (const auto *Var = dynamic_cast<VariableAST*>(LHS.get())) {
+            llvm::Value *RHSVal = RHS->codegen();
+            return handleAssignment(RHSVal, RHS->getType(), Var->getType(), Var->getName(), Var->getConstness(), Var->getDecl());
+        } else if (auto *Arr = dynamic_cast<AccessElementOperatorAST*>(LHS.get())) {
+            llvm::Value *LHSVal = Arr->requireLValue();
+            return Builder->CreateStore(RHS->codegen(), LHSVal);
+        } else {
+            babel_panic("Destination of '=' must be assignable");
+        }
     }
 
     llvm::Value *left = LHS->codegen();
@@ -662,7 +793,7 @@ llvm::Value *BinaryOperatorAST::codegen() {
     } else if (Op == ">") {
         return Builder->CreateICmpSGT(left, right, "gttmp");
     } else {
-        babel_panic("Invalid binary operator");
+        babel_panic("Invalid binary operator %s", Op.c_str());
     }
 }
 
@@ -679,6 +810,24 @@ llvm::Value *UnaryOperatorAST::codegen() {
     } else {
         babel_panic("Invalid unary operator");
     }
+}
+
+llvm::Value *AccessElementOperatorAST::codegen() {
+    if (!isBabelInteger(Index->getType()))
+        babel_panic("Element access must use integer index");
+
+    // maybe bounds check, or opt for a C++ like setup with at and operator[]
+    llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
+    llvm::Value* elmntPtr = Builder->CreateInBoundsGEP(resolveLLVMType(Val->getType()), Val->codegen(), {zero, Index->codegen()}, "elmntPtr");
+
+    if (requiresLValue) {
+        if (Val->getConstness()) 
+            babel_panic("The underlying array is constant");
+
+        return elmntPtr;
+    }
+    
+    return Builder->CreateLoad(resolveLLVMType(*(Val->getType().getArray().inner)), elmntPtr, "arrtmp");
 }
 
 llvm::Value *ReturnStmtAST::codegen() {
@@ -801,7 +950,6 @@ llvm::Value *TaskCallAST::codegen() {
         if (!TaskTable.contains(name)) {
             std::string expected = "";
             for (const auto&[key, value] : TaskTable) {
-                // TODO: check error msg
                 if (key.starts_with(callsTo + ".polymorphic")) {
                     std::vector<std::string> strArgs;
                     std::ranges::transform(value.args, std::back_inserter(strArgs), [](BabelType t) { return getBabelTypeName(t); });
@@ -828,7 +976,7 @@ llvm::Value *TaskCallAST::codegen() {
         ArgsV.push_back(val);
     }
 
-    if (TaskTable.at(callsTo).ret == BabelType::Void)
+    if (TaskTable.at(callsTo).ret == BabelType::Void())
         return Builder->CreateCall(CalleF, ArgsV);
     return Builder->CreateCall(CalleF, ArgsV, "calltmp");
 }
@@ -879,7 +1027,7 @@ llvm::Function *TaskAST::codegen() {
     //if (llvm::Value *RetVal = Body->codegen()) {
         //Builder->CreateRet(RetVal);
         Body->codegen();
-        if (Header->getRetType() == BabelType::Void)
+        if (Header->getRetType() == BabelType::Void())
             Builder->CreateRetVoid();
         verifyFunction(*TheFunction);
         Builder->restoreIP(PrevInsertPoint);
@@ -939,9 +1087,9 @@ llvm::Function *RootAST::codegen() {
     Builder->CreateStore(Argv, GArgv);
     Builder->CreateStore(Envp, GEnvp);
 
-    GlobalValues["__argc__"] = {GArgc, BabelType::Int32, false};
-    GlobalValues["__argv__"] = {GArgv, BabelType::CString, false};
-    GlobalValues["__envp__"] = {GEnvp, BabelType::CString, false};
+    GlobalValues["__argc__"] = {GArgc, BabelType::Int32(), false};
+    GlobalValues["__argv__"] = {GArgv, BabelType::CString(), false};
+    GlobalValues["__envp__"] = {GEnvp, BabelType::CString(), false};
 
     // __global_main wrapper for top level code
     llvm::FunctionType *FT = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), false);
