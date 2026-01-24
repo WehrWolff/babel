@@ -8,8 +8,7 @@ statement_list      : statement
 statement           : simple_stmt_list
                     | compound_stmt terminator
 
-simple_stmt_list    : simple_stmt
-                    | simple_stmt terminator
+simple_stmt_list    : simple_stmt terminator
                     | simple_stmt terminator simple_stmt_list
 
 simple_stmt         : NOOP

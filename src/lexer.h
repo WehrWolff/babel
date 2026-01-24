@@ -130,6 +130,9 @@ class Lexer {
 
             std::erase_if(tokens, [](const Token& tok){ return tok.getType() == "NEWLINE"; });
 
+            if (tokens.back().getType() != "SEMICOLON")
+                tokens.emplace_back("SEMICOLON", ";");
+
             return tokens;
         }
 
