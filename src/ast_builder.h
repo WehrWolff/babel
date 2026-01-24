@@ -241,7 +241,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         done:
             //std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
             fprintf(stderr, "\n");
-    } else if (type == "elif_stmt" || type == "task_header" || type == "args" || type == "params" || type == "generic_list" || type == "type" || type == "type_spec") {
+    } else if (type == "elif_stmt" || type == "task_header" || type == "args" || type == "params" || type == "generic_list" || type == "type" || type == "type_spec" || type == "type_signature") {
         return; // handled by it's corresponding statement
     } else if (type == "return_stmt") {
         // assuming not multiple return values
@@ -268,13 +268,10 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         BabelType retType = getBabelType(std::get<TreeNode>(nodeStack.top())); nodeStack.pop();
         nodeStack.pop(); nodeStack.pop(); // RARR and RPAREN
 
-        std::deque<std::string> ArgNames;
         std::deque<BabelType> ArgTypes;
         while (std::get<TreeNode>(nodeStack.top()).name != "LPAREN") {
             // ArgTypes.push_front(getBabelType(std::get<TreeNode>(nodeStack.top()).data.value())); nodeStack.pop();
             ArgTypes.push_front(getBabelType(std::get<TreeNode>(nodeStack.top()))); nodeStack.pop();
-            nodeStack.pop(); // COLON
-            ArgNames.push_front(std::get<TreeNode>(nodeStack.top()).data.value()); nodeStack.pop();
 
             if (std::get<TreeNode>(nodeStack.top()).name == "COMMA")
                 nodeStack.pop();
@@ -284,7 +281,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         std::string TaskName = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
         nodeStack.pop(); nodeStack.pop(); // TASK and EXTERN
 
-        node = std::make_unique<TaskHeaderAST>(TaskName, ArgNames, ArgTypes, retType);
+        node = std::make_unique<TaskHeaderAST>(TaskName, std::deque<std::string>(ArgTypes.size(), "") , ArgTypes, retType);
     } else if (type == "task_def") {
         nodeStack.pop(); // END
 

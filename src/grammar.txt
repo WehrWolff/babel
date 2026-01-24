@@ -79,10 +79,13 @@ args                : VAR type_spec
                     | VAR type_spec EQUALS expression
                     | args COMMA args
 
+type_signature      : type
+                    | type_signature COMMA type_signature
+
 task_header         : TASK VAR LPAREN RPAREN RARR type DO
                     | TASK VAR LPAREN args RPAREN RARR type DO
 
-extern_task         : EXTERN TASK VAR LPAREN args RPAREN RARR type
+extern_task         : EXTERN TASK VAR LPAREN type_signature RPAREN RARR type
                     | EXTERN TASK VAR LPAREN RPAREN RARR type
 
 task_def            : task_header block END
