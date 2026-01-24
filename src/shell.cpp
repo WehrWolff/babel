@@ -18,7 +18,7 @@ void run(const Lexer& lexer, const Parser& parser, const std::string& text) {
     std::vector<Token> tokens = lexer.tokenize(text);
     Lexer::insertSemicolons(tokens);
     std::cout << tokens << std::endl;
-    std::visit([](const auto& value) { std::cout << value << std::endl; }, parser.parse(tokens));
+    std::visit([](const auto& value) { /* std::cout << value << std::endl; */ }, parser.parse(tokens));
 }
 
 Parser loadParserData(const std::filesystem::path& project_root) {

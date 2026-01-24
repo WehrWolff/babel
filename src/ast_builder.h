@@ -77,7 +77,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         } else if (atom.name == "BOOL") {
             node = std::make_unique<BooleanAST>(atom.data.value());
         } else if (atom.name == "VAR") {
-            node = std::make_unique<VariableAST>(atom.data.value(), std::nullopt, false, false);
+            node = std::make_unique<VariableAST>(atom.data.value(), std::nullopt, false, false, false);
         } else if (atom.name == "STRING") {
             node = std::make_unique<CStringAST>(unescapeString(atom.data.value().substr(1, atom.data.value().size() - 2)));
         }
@@ -102,10 +102,9 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
             nodeStack.pop();
             std::unique_ptr<BaseAST> index = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
             nodeStack.pop(); // LSQUARE
-            std::unique_ptr<BaseAST> temp = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
-            auto var = std::make_unique<VariableAST>(*dynamic_cast<VariableAST*>(temp.get()));
+            std::unique_ptr<BaseAST> container = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
 
-            node = std::make_unique<AccessElementOperatorAST>(std::move(var), std::move(index));
+            node = std::make_unique<AccessElementOperatorAST>(std::move(container), std::move(index));
         }
     } else if (type == "inversion" || type == "factor") {
         std::unique_ptr<BaseAST> operand;
@@ -147,11 +146,11 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         }
 
         if (auto subop = op.children.front().data.value(); subop != "=") {
-            auto subexpr = std::make_unique<BinaryOperatorAST>(subop.substr(0, subop.size() - 1), std::make_unique<VariableAST>(var.data.value(), std::nullopt, isConstant, isDeclaration), std::move(rhs));
-            node = std::make_unique<BinaryOperatorAST>("=", std::make_unique<VariableAST>(var.data.value(), std::nullopt, isConstant, isDeclaration), std::move(subexpr));
+            auto subexpr = std::make_unique<BinaryOperatorAST>(subop.substr(0, subop.size() - 1), std::make_unique<VariableAST>(var.data.value(), std::nullopt, isConstant, isDeclaration, rhs->isComptimeAssignable()), std::move(rhs));
+            node = std::make_unique<BinaryOperatorAST>("=", std::make_unique<VariableAST>(var.data.value(), std::nullopt, isConstant, isDeclaration, subexpr->isComptimeAssignable()), std::move(subexpr));
         } else {
             if (!varType.has_value()) varType = rhs->getType();
-            node = std::make_unique<BinaryOperatorAST>(subop, std::make_unique<VariableAST>(var.data.value(), varType, isConstant, isDeclaration), std::move(rhs));
+            node = std::make_unique<BinaryOperatorAST>(subop, std::make_unique<VariableAST>(var.data.value(), varType, isConstant, isDeclaration, rhs->isComptimeAssignable()), std::move(rhs));
         }
         
         //std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
@@ -166,10 +165,10 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         TreeNode var = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
 
         if (auto subop = op.children.front().data.value(); subop != "=") {
-            auto subexpr = std::make_unique<BinaryOperatorAST>(subop.substr(0, subop.size() - 1), std::make_unique<AccessElementOperatorAST>(std::make_unique<VariableAST>(var.data.value(), std::nullopt, false, false), std::move(index)), std::move(rhs));
-            node = std::make_unique<BinaryOperatorAST>("=", std::make_unique<AccessElementOperatorAST>(std::make_unique<VariableAST>(var.data.value(), std::nullopt, false, false), std::move(index)), std::move(subexpr));
+            auto subexpr = std::make_unique<BinaryOperatorAST>(subop.substr(0, subop.size() - 1), std::make_unique<AccessElementOperatorAST>(std::make_unique<VariableAST>(var.data.value(), std::nullopt, false, false, false), std::move(index)), std::move(rhs));
+            node = std::make_unique<BinaryOperatorAST>("=", std::make_unique<AccessElementOperatorAST>(std::make_unique<VariableAST>(var.data.value(), std::nullopt, false, false, false), std::move(index)), std::move(subexpr));
         } else {
-            node = std::make_unique<BinaryOperatorAST>(subop, std::make_unique<AccessElementOperatorAST>(std::make_unique<VariableAST>(var.data.value(), std::nullopt, false, false), std::move(index)), std::move(rhs));
+            node = std::make_unique<BinaryOperatorAST>(subop, std::make_unique<AccessElementOperatorAST>(std::make_unique<VariableAST>(var.data.value(), std::nullopt, false, false, false), std::move(index)), std::move(rhs));
         }
     } else if (type == "if_stmt") {
         nodeStack.pop(); // END

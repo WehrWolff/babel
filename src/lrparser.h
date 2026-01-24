@@ -688,8 +688,7 @@ public:
                 }
 
                 auto root = std::make_unique<RootAST>(std::move(statement_list));
-                root->codegen()->print(llvm::errs());
-                fprintf(stderr, "\n");
+                root->codegen();
             }
 
             //return TreeNode{lrTable.grammar.axiom, std::nullopt, {reducedNodes.top()}};

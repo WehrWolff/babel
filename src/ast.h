@@ -19,6 +19,8 @@
 
 #include "util.hpp"
 
+#define GLOBAL_SCOPE Builder->GetInsertBlock()->getParent()->getName().starts_with("__global_main")
+
 // TODO: move to its own header file: typing.h
 enum class BasicType {
     Int,
@@ -76,7 +78,9 @@ struct BabelType {
     bool operator==(const BabelType& that) const = default;
 };
 
-bool ArrayType::operator==(const ArrayType& that) const = default;
+bool ArrayType::operator==(const ArrayType& that) const {
+    return *inner == *that.inner && size == that.size;
+}
 template <>
 struct std::hash<ArrayType> {
     size_t operator()(const ArrayType& a) const {
@@ -108,6 +112,8 @@ struct GlobalSymbol {
     llvm::GlobalVariable* val;
     BabelType type;
     bool isConstant;
+    bool isComptime; // we might need to change this in the future, in case the variable is overridden e.g. let s = "Hello World"; s = input("Enter a sring: ")
+    llvm::Constant* comptimeInit;
 };
 
 struct LocalSymbol {
@@ -232,6 +238,8 @@ std::string getBabelTypeName(BabelType type) {
     } else if (type.isArray()) {
         return "Array<" + getBabelTypeName(*type.getArray().inner) + ">";
     }
+
+    babel_unreachable();
 }
 
 bool isBabelInteger(BabelType type) {
@@ -310,7 +318,10 @@ class BaseAST {
     public:
         virtual ~BaseAST() = default;
         virtual llvm::Value *codegen() = 0;
+        virtual llvm::Constant *codegenComptime() { babel_panic("Cannot generate value at compile time"); }
+        virtual llvm::Value *requireLValue() { babel_panic("No lvalue available for this AST node"); }
         virtual BabelType getType() const { babel_panic("getType() not supported for this AST node"); }
+        virtual bool isComptimeAssignable() const { babel_panic("isComptimeAssignable() not supported for this AST node"); }
 };
 
 // class for referencing variables
@@ -319,12 +330,13 @@ class VariableAST : public BaseAST {
     const std::optional<BabelType> Type;
     bool isConst;
     const bool isDecl;
-    // bool requiresLValue = false;
+    bool isComptime;
+    bool requiresLValue = false;
 
     public:
-        VariableAST(const std::string &Name, const std::optional<BabelType>& Type, const bool isConst, const bool isDecl) : Name(Name), Type(Type), isConst(isConst), isDecl(isDecl) {
+        VariableAST(const std::string &Name, const std::optional<BabelType>& Type, const bool isConst, const bool isDecl, const bool isComptime) : Name(Name), Type(Type), isConst(isConst), isDecl(isDecl), isComptime(isComptime) {
             if (isDecl) { insertSymbol(); }
-            else { this->isConst = GlobalValues.at(Name).isConstant; }
+            else { this->isConst = GlobalValues.at(Name).isConstant; this->isComptime = GlobalValues.at(Name).isComptime; }
             // TODO: each variable auto updates itself so the node knows wether its variable is constant or not
             // this allows for a significant simplification of the handleAssignment method
         }
@@ -332,14 +344,18 @@ class VariableAST : public BaseAST {
         std::string getName() const { return Name; }
         bool getConstness() const { return isConst; }
         bool getDecl() const { return isDecl; }
+        bool hasComptimeVal() const { return isComptime; }
         BabelType getType() const override;
+        bool isComptimeAssignable() const override { return GlobalValues.at(Name).isComptime; }
         llvm::Value *codegen() override;
-        /* llvm::Value *requireLValue() {
+        llvm::Constant *codegenComptime() override;
+        llvm::Value *requireLValue() override {
             requiresLValue = true;
             llvm::Value* lVal = codegen();
             requiresLValue = false;
+            assert(lVal->getType()->isPointerTy() && "requireLValue returned non-pointer");
             return lVal;
-        } */
+        }
 };
 
 class BooleanAST : public BaseAST {
@@ -347,8 +363,10 @@ class BooleanAST : public BaseAST {
 
     public:
         explicit BooleanAST(std::string_view value) : Val(value == "TRUE" ? 1 : 0) {}
-        llvm::Value *codegen() override;
+        llvm::Value *codegen() override { return codegenComptime(); }
+        llvm::Constant *codegenComptime() override;
         BabelType getType() const override { return BabelType::Boolean(); }
+        bool isComptimeAssignable() const override { return true; }
 };
 
 // class for numeric literals which are integers
@@ -357,8 +375,10 @@ class IntegerAST : public BaseAST {
 
     public:
         explicit IntegerAST(int Val) : Val(Val) {}
-        llvm::Value *codegen() override;
+        llvm::Value *codegen() override { return codegenComptime(); }
+        llvm::Constant *codegenComptime() override;
         BabelType getType() const override { return BabelType::Int(); }
+        bool isComptimeAssignable() const override { return true; }
 };
 
 class CharacterAST : public BaseAST {
@@ -366,8 +386,10 @@ class CharacterAST : public BaseAST {
 
     public:
         explicit CharacterAST(const char Val) : Val(Val) {}
-        llvm::Value *codegen() override;
+        llvm::Value *codegen() override { return codegenComptime(); }
+        llvm::Constant *codegenComptime() override;
         BabelType getType() const override { return BabelType::Character(); }
+        bool isComptimeAssignable() const override { return true; }
 };
 
 class CStringAST : public BaseAST {
@@ -375,8 +397,10 @@ class CStringAST : public BaseAST {
 
     public:
         explicit CStringAST(const std::string& Val) : Val(Val) {}
-        llvm::Value *codegen() override;
+        llvm::Value *codegen() override { return codegenComptime(); }
+        llvm::Constant *codegenComptime() override;
         BabelType getType() const override { return BabelType::CString(); }
+        bool isComptimeAssignable() const override { return true; }
 };
 
 // class for numeric literals which are floating points
@@ -385,8 +409,10 @@ class FloatingPointAST : public BaseAST {
 
     public:
         explicit FloatingPointAST(double Val) : Val(Val) {}
-        llvm::Value *codegen() override;
+        llvm::Value *codegen() override { return codegenComptime(); }
+        llvm::Constant *codegenComptime() override;
         BabelType getType() const override { return BabelType::Float64(); }
+        bool isComptimeAssignable() const override { return true; }
 };
 
 class ArrayAST : public BaseAST {
@@ -395,8 +421,8 @@ class ArrayAST : public BaseAST {
     const BabelType Inner;
 
     public:
-        explicit ArrayAST(std::deque<std::unique_ptr<BaseAST>> _Val) : Val(std::move(_Val)), Size(Val.size()) {
-            BabelType Inner = Size > 0 ? Val.front()->getType() : BabelType::Int(); // arbitrary type for empty arrays
+        // arbitrary type for empty arrays
+        explicit ArrayAST(std::deque<std::unique_ptr<BaseAST>> _Val) : Val(std::move(_Val)), Size(Val.size()), Inner(Size > 0 ? Val.front()->getType() : BabelType::Int()) {
             // TODO: type casting should be allowed, e.g. Array(1, 2.9, 4)
             for (const auto& elmnt : Val) {
                 if (Inner != elmnt->getType())
@@ -404,23 +430,26 @@ class ArrayAST : public BaseAST {
             }
         }
         llvm::Value* codegen() override;
+        llvm::Constant *codegenComptime() override;
         BabelType getType() const override { return BabelType::Array(&Inner, Size); }
+        bool isComptimeAssignable() const override { return std::ranges::all_of(Val, [](const std::unique_ptr<BaseAST>& elmnt) {return elmnt->isComptimeAssignable(); }); }
 };
 
 class AccessElementOperatorAST : public BaseAST {
-    std::unique_ptr<VariableAST> Val;
+    std::unique_ptr<BaseAST> Container;
     std::unique_ptr<BaseAST> Index;
     bool requiresLValue = false;
 
     public:
-        AccessElementOperatorAST(std::unique_ptr<VariableAST> Val, std::unique_ptr<BaseAST> Index) : Val(std::move(Val)), Index(std::move(Index)) {}
+        AccessElementOperatorAST(std::unique_ptr<BaseAST> Container, std::unique_ptr<BaseAST> Index) : Container(std::move(Container)), Index(std::move(Index)) {}
         llvm::Value *codegen() override;
-        BabelType getType() const override { return *(Val->getType().getArray().inner); }
-        llvm::Value *requireLValue() {
+        BabelType getType() const override { return *(Container->getType().getArray().inner); }
+        bool isComptimeAssignable() const override { return false; }
+        llvm::Value *requireLValue() override {
             requiresLValue = true;
             llvm::Value* lVal = codegen();
-            assert(lVal->getType()->isPointerTy() && "requireLValue returned non-pointer");
             requiresLValue = false;
+            assert(lVal->getType()->isPointerTy() && "requireLValue returned non-pointer");
             return lVal;
         }
 };
@@ -434,7 +463,9 @@ class BinaryOperatorAST : public BaseAST {
     public:
         BinaryOperatorAST(const std::string& Op, std::unique_ptr<BaseAST> LHS, std::unique_ptr<BaseAST> RHS) : Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
         llvm::Value *codegen() override;
+        llvm::Constant* codegenComptime() override { assert(isComptimeAssignable()); return llvm::cast<llvm::Constant>(codegen()); }
         BabelType getType() const override;
+        bool isComptimeAssignable() const override { return LHS->isComptimeAssignable() && RHS->isComptimeAssignable(); }
 };
 
 class UnaryOperatorAST : public BaseAST {
@@ -444,6 +475,9 @@ class UnaryOperatorAST : public BaseAST {
     public:
         UnaryOperatorAST(const std::string& Op, std::unique_ptr<BaseAST> Val) : Op(Op), Val(std::move(Val)) {}
         llvm::Value *codegen() override;
+        llvm::Constant* codegenComptime() override { assert(isComptimeAssignable()); return llvm::cast<llvm::Constant>(codegen()); }
+        BabelType getType() const override { return Val->getType(); }
+        bool isComptimeAssignable() const override { return Val->isComptimeAssignable(); }
 };
 
 class ReturnStmtAST : public BaseAST {
@@ -496,6 +530,7 @@ class TaskCallAST : public BaseAST {
     public:
         TaskCallAST(const std::string &callsTo, std::deque<std::unique_ptr<BaseAST>> Args) : callsTo(callsTo), Args(std::move(Args)) {}
         BabelType getType() const override;
+        bool isComptimeAssignable() const override { return false; } /* true if it's comptime, but that doesn't exist yet */
         llvm::Value *codegen() override;
 };
 
@@ -547,7 +582,7 @@ class TaskAST : public BaseAST {
 void VariableAST::insertSymbol() const {
     // nullptr is not viewed as having a value
     // since we can't check using the Builder, just insert into both
-    GlobalValues[Name] = {nullptr, Type.value(), isConst};
+    GlobalValues[Name] = {nullptr, Type.value(), isConst, isComptime, nullptr};
     NamedValues[Name] = {nullptr, Type.value(), isConst};
 }
 
@@ -576,16 +611,35 @@ BabelType TaskCallAST::getType() const  {
     return TaskTable.at(callsTo).ret;
 }
 
-llvm::Value *handleAssignment(llvm::Value* RHSVal, BabelType RHSType, BabelType VarType, const std::string& VarName, const bool isConst, const bool isDeclaration) {
-    if (!RHSVal)
-        return nullptr;
-
-    if (Builder->GetInsertBlock()->getParent()->getName().starts_with("__global_main")) {
-        // we are in global scope
-
-        if (!llvm::isa<llvm::Constant>(RHSVal)) {
-            //babel_panic("Global variables must be initialized with constant values");
+void StoreOrMemCpy(BaseAST* src, BabelType srcType, llvm::Value* dest, BabelType destType) {
+    // Aggregate would be more precise, change this in the future
+    if (src->getType().isArray()) {
+        llvm::Type* type = resolveLLVMType(src->getType());
+        uint64_t size = TheModule->getDataLayout().getTypeAllocSize(type);
+        llvm::Align align = TheModule->getDataLayout().getABITypeAlign(type);
+        if (auto* SRC = dynamic_cast<VariableAST*>(src)) {
+            Builder->CreateMemCpy(dest, align, SRC->requireLValue(), align, size);
+            return;
         }
+        
+        llvm::Value* srcVal = src->codegen();
+        if (canImplicitCast(srcType, destType))
+            srcVal = performImplicitCast(srcVal, srcType, destType);
+
+        Builder->CreateMemCpy(dest, align, srcVal, align, size);
+        printf("Potentially dangerous\n");
+    } else {
+        llvm::Value* srcVal = src->codegen();
+        if (canImplicitCast(srcType, destType))
+                srcVal = performImplicitCast(srcVal, srcType, destType);
+
+        Builder->CreateStore(srcVal, dest);
+    }
+}
+
+llvm::Value *handleAssignment(BaseAST* RHS, BabelType RHSType, BabelType VarType, const std::string& VarName, const bool isConst, const bool isDeclaration, const bool isComptime) {
+    if (GLOBAL_SCOPE) {
+        // we are in global scope
 
         if (GlobalValues.contains(VarName) && GlobalValues.at(VarName).val != nullptr) {
             if (isDeclaration) {
@@ -597,10 +651,7 @@ llvm::Value *handleAssignment(llvm::Value* RHSVal, BabelType RHSType, BabelType 
                 babel_panic("Cannot assign to constant '%s'", VarName.c_str());
             }
 
-            if (canImplicitCast(RHSType, existing.type))
-                RHSVal = performImplicitCast(RHSVal, RHSType, existing.type);
-
-            Builder->CreateStore(RHSVal, existing.val);
+            StoreOrMemCpy(RHS, RHSType, existing.val, existing.type);
             return existing.val;
         }
 
@@ -608,16 +659,25 @@ llvm::Value *handleAssignment(llvm::Value* RHSVal, BabelType RHSType, BabelType 
             babel_panic("Variable '%s' used before declaration", VarName.c_str());
         }
 
+        llvm::Constant* zeroInit = llvm::Constant::getNullValue(resolveLLVMType(VarType));
+        llvm::Constant* initializer = isComptime ? llvm::cast<llvm::Constant>(performImplicitCast(RHS->codegenComptime(), RHSType, VarType)) : zeroInit;
+
         auto *GV = new llvm::GlobalVariable(
             *TheModule,
             resolveLLVMType(VarType),
             isConst,
             llvm::GlobalValue::ExternalLinkage,
-            llvm::cast<llvm::Constant>(performImplicitCast(RHSVal, RHSType, VarType)), // must be a constant
+            initializer,
             VarName
         );
 
-        GlobalValues[VarName] = {GV, VarType, isConst};
+        if (!isComptime) {
+            StoreOrMemCpy(RHS, RHSType, GV, VarType);
+            // If not in "script mode":
+            // babel_panic("Global variables must be initialized with constant values");
+        }
+
+        GlobalValues[VarName] = {GV, VarType, isConst, isComptime, initializer};
         return GV;
     } else {
         // we are in local scope
@@ -634,10 +694,7 @@ llvm::Value *handleAssignment(llvm::Value* RHSVal, BabelType RHSType, BabelType 
                     babel_panic("Cannot assign to constant '%s'", VarName.c_str());
                 }
 
-                if (canImplicitCast(RHSType, existing.type))
-                    RHSVal = performImplicitCast(RHSVal, RHSType, existing.type);
-
-                Builder->CreateStore(RHSVal, existing.val);
+                StoreOrMemCpy(RHS, RHSType, existing.val, existing.type);
                 return existing.val;
             }
 
@@ -662,78 +719,86 @@ llvm::Value *handleAssignment(llvm::Value* RHSVal, BabelType RHSType, BabelType 
             }
         }
 
-        if (canImplicitCast(RHSType, Var.type))
-            RHSVal = performImplicitCast(RHSVal, RHSType, Var.type);
-
-        Builder->CreateStore(RHSVal, Var.val);
+        StoreOrMemCpy(RHS, RHSType, Var.val, Var.type);
         return Var.val;
     }
 }
 
 llvm::Value *ArrayAST::codegen() {
-    std::vector<llvm::Constant*> Args;
-    for (const auto& elmnt : Val) {
-        Args.push_back(llvm::cast<llvm::Constant>(elmnt->codegen()));
+    llvm::ArrayType* type = llvm::ArrayType::get(resolveLLVMType(Inner), Size);
+
+    llvm::Value* ptr = Builder->CreateAlloca(type);
+    llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
+
+    for (int i = 0; i < Val.size(); i++) {
+        llvm::Value* index = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), i);
+        llvm::Value* slot = Builder->CreateGEP(type, ptr, {zero, index});
+        StoreOrMemCpy(Val[i].get(), Val[i]->getType(), slot, Inner);
     }
 
-    return llvm::ConstantArray::get(llvm::ArrayType::get(resolveLLVMType(Inner), Size), Args);
+    return ptr;
 }
 
-llvm::Value *FloatingPointAST::codegen() {
+llvm::Constant *ArrayAST::codegenComptime() {
+    llvm::ArrayType* type = llvm::ArrayType::get(resolveLLVMType(Inner), Size);
+
+    assert(isComptimeAssignable() && GLOBAL_SCOPE);
+
+    std::vector<llvm::Constant*> Args;
+    for (const auto& elmnt : Val) {
+        auto* var = dynamic_cast<VariableAST*>(elmnt.get());
+        Args.push_back(var == nullptr ? elmnt->codegenComptime() : GlobalValues.at(var->getName()).comptimeInit);
+    }
+
+    return llvm::ConstantArray::get(type, Args);
+}
+
+llvm::Constant *FloatingPointAST::codegenComptime() {
     return llvm::ConstantFP::get(*TheContext, llvm::APFloat((float)Val));
 }
 
-llvm::Value *IntegerAST::codegen() {
+llvm::Constant *IntegerAST::codegenComptime() {
     // bit width 32
     return llvm::ConstantInt::get(*TheContext, llvm::APInt(32, Val, true));
 }
 
-llvm::Value *CharacterAST::codegen() {
+llvm::Constant *CharacterAST::codegenComptime() {
     return llvm::ConstantInt::get(llvm::Type::getInt8Ty(*TheContext), Val);
 }
 
-llvm::Value *CStringAST::codegen() {
-    llvm::Constant *ConstStr = llvm::ConstantDataArray::getString(*TheContext, Val, true);
-
-    auto *GV = new llvm::GlobalVariable(
-        *TheModule,
-        ConstStr->getType(),
-        true, // isConstant
-        llvm::GlobalValue::PrivateLinkage,
-        ConstStr,
-        ".cstr");
-
-    llvm::Constant* Zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
-    llvm::ArrayRef Indices = {Zero, Zero};
-
-    return llvm::ConstantExpr::getInBoundsGetElementPtr(ConstStr->getType(), GV, Indices);
+llvm::Constant *CStringAST::codegenComptime() {
+    return Builder->CreateGlobalString(Val, ".cstr");
 }
 
-llvm::Value *BooleanAST::codegen() {
+llvm::Constant *BooleanAST::codegenComptime() {
     return llvm::ConstantInt::get(llvm::Type::getInt1Ty(*TheContext), Val);
 }
 
 llvm::Value *VariableAST::codegen() {
     if (NamedValues.contains(Name) && NamedValues.at(Name).val != nullptr) {
-        if (NamedValues[Name].val->getType()->isPointerTy() && !GlobalValues[Name].type.isArray())
-            return Builder->CreateLoad(resolveLLVMType(NamedValues[Name].type), NamedValues[Name].val, Name);
+        if (requiresLValue)
+            return NamedValues[Name].val;
         
-        return NamedValues[Name].val;
+        return Builder->CreateLoad(resolveLLVMType(NamedValues[Name].type), NamedValues[Name].val, Name);
     } else if (GlobalValues.contains(Name) && GlobalValues.at(Name).val != nullptr) {
-        if (GlobalValues[Name].val->getType()->isPointerTy() && !GlobalValues[Name].type.isArray())
-            return Builder->CreateLoad(resolveLLVMType(GlobalValues[Name].type), GlobalValues[Name].val, Name);
+        if (requiresLValue)
+            return GlobalValues[Name].val;
         
-        return GlobalValues[Name].val;
+        return Builder->CreateLoad(resolveLLVMType(GlobalValues[Name].type), GlobalValues[Name].val, Name);
     } else {
         babel_panic("Unknown variable '%s' referenced", Name.c_str());
     }
 }
 
+llvm::Constant *VariableAST::codegenComptime() {
+    assert(isComptimeAssignable());
+    return GlobalValues.at(Name).comptimeInit;
+}
+
 llvm::Value *BinaryOperatorAST::codegen() {
     if (Op == "=") {        
         if (const auto *Var = dynamic_cast<VariableAST*>(LHS.get())) {
-            llvm::Value *RHSVal = RHS->codegen();
-            return handleAssignment(RHSVal, RHS->getType(), Var->getType(), Var->getName(), Var->getConstness(), Var->getDecl());
+            return handleAssignment(RHS.get(), RHS->getType(), Var->getType(), Var->getName(), Var->getConstness(), Var->getDecl(), Var->hasComptimeVal());
         } else if (auto *Arr = dynamic_cast<AccessElementOperatorAST*>(LHS.get())) {
             llvm::Value *LHSVal = Arr->requireLValue();
             return Builder->CreateStore(RHS->codegen(), LHSVal);
@@ -815,24 +880,27 @@ llvm::Value *UnaryOperatorAST::codegen() {
 llvm::Value *AccessElementOperatorAST::codegen() {
     if (!isBabelInteger(Index->getType()))
         babel_panic("Element access must use integer index");
+    
+    if (!Container->getType().isArray())
+        babel_panic("'%s' object is not subscriptable", getBabelTypeName(Container->getType()).c_str());
 
     // maybe bounds check, or opt for a C++ like setup with at and operator[]
     llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
-    llvm::Value* elmntPtr = Builder->CreateInBoundsGEP(resolveLLVMType(Val->getType()), Val->codegen(), {zero, Index->codegen()}, "elmntPtr");
+    llvm::Value* elmntPtr = Builder->CreateInBoundsGEP(resolveLLVMType(Container->getType()), Container->requireLValue(), {zero, Index->codegen()}, "elmntPtr");
 
     if (requiresLValue) {
-        if (Val->getConstness()) 
+        if (auto const* var = dynamic_cast<VariableAST*>(Container.get()); var && var->getConstness())
             babel_panic("The underlying array is constant");
 
         return elmntPtr;
     }
     
-    return Builder->CreateLoad(resolveLLVMType(*(Val->getType().getArray().inner)), elmntPtr, "arrtmp");
+    return Builder->CreateLoad(resolveLLVMType(*(Container->getType().getArray().inner)), elmntPtr, "arrtmp");
 }
 
 llvm::Value *ReturnStmtAST::codegen() {
-    llvm::Function *TheFunction = Builder->GetInsertBlock()->getParent();
-    if (TheFunction->getName().starts_with("__global_main"))
+    llvm::Function const *TheFunction = Builder->GetInsertBlock()->getParent();
+    if (GLOBAL_SCOPE)
         babel_panic("Return statements must be inside of a task");
 
     if (Expr) {
@@ -1087,9 +1155,9 @@ llvm::Function *RootAST::codegen() {
     Builder->CreateStore(Argv, GArgv);
     Builder->CreateStore(Envp, GEnvp);
 
-    GlobalValues["__argc__"] = {GArgc, BabelType::Int32(), false};
-    GlobalValues["__argv__"] = {GArgv, BabelType::CString(), false};
-    GlobalValues["__envp__"] = {GEnvp, BabelType::CString(), false};
+    GlobalValues["__argc__"] = {GArgc, BabelType::Int32(), false, false};
+    GlobalValues["__argv__"] = {GArgv, BabelType::CString(), false, false};
+    GlobalValues["__envp__"] = {GEnvp, BabelType::CString(), false, false};
 
     // __global_main wrapper for top level code
     llvm::FunctionType *FT = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), false);
