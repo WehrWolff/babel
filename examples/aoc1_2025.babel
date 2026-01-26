@@ -1,0 +1,58 @@
+\\ This is a comment, everything after the \\ is ignored
+\\ If you come from C like languages you might have expected //
+\\ However // is already used as the integer divide operator
+\\ Maybe you expected # instead, like in python
+\\ Although unused, # is reserved for preprocessing or function attributes
+
+\\ Currently there is no standard library, but we can extern tasks from libc directly
+\\ fopen, fscanf and fclose all use a FILE*, where FILE is a struct
+\\ We don't have the FILE struct since it comes from C
+\\ Therefor we use a *void as an opaque pointer
+extern task fopen(cstr, cstr) => *void
+extern task fscanf(*void, cstr, *int, *int) => int
+extern task fclose(*void) => void
+extern task printf(cstr, int) => void
+
+\\ This is the first "real" problem we solve to show what Babel is capable of
+\\ Not just a small "Hello World" program or fibonacci speed test
+\\ It is the first day problem from the advent of code 2025
+task first_puzzle() => void do
+    \\ The real puzzle input is way larger than the one in input.txt
+    \\ But I don't want to bloat the repo with a ~15kB file only for demonstration
+    let fptr = fopen("input.txt", "r")
+
+    \\ Currently there is no undefined to initialize with
+    \\ So we store some arbitrary data
+    let direction: char = 'L'
+    let distance: int = 0
+
+    \\ Actually there is no need to provide the type annotations
+    \\ The compiler will figure it out automatically
+    let dial = 50
+    let counter = 0
+
+    \\ I haven't bothered to write loops yet so we have to build our own
+    \\ We create a label to jump to
+    $loop_start
+    if fscanf(fptr, " %c%d", &direction, &distance) == 2 then
+        if direction == 'L' then
+            dial = dial - distance + 100
+        else
+            dial += distance
+        end
+
+        dial %= 100
+        printf("%d\n", dial)
+        if dial == 0 then
+            counter += 1
+        end
+
+        \\ Jump back to loop_start to keep iterating
+        goto loop_start
+    end
+
+    fclose(fptr)
+    printf("We hit the 0 exactly %d times.\n", counter)
+end
+
+first_puzzle()
