@@ -45,6 +45,7 @@ class BabelRecipe(ConanFile):
         # When those are fixed these options can be removed
         self.options["llvm-core"].with_z3 = False
         self.options["llvm-core"].with_libedit = False
+        self.options["boost"].without_cobalt = True
 
     def build(self):
         cmake = CMake(self)
