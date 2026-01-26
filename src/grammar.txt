@@ -21,6 +21,7 @@ simple_stmt         : NOOP
                     | import_stmt
                     | assignment
                     | element_assignment
+                    | indirect_assignment
                     | function_call
 
 goto_stmt           : GOTO VAR
@@ -36,9 +37,16 @@ import_stmt         : IMPORT comma_values
 
 element_assignment  : VAR LSQUARE expression RSQUARE assignment_operator expression
 
+chained_indirection : MULTIPLY
+                    | MULTIPLY chained_indirection
+
+indirect_assignment : VAR chained_indirection assignment_operator expression
+
 assignment          : VAR assignment_operator expression
-                    | VARDECL VAR assignment_operator expression
-                    | VARDECL VAR type_spec assignment_operator expression
+                    | LET VAR assignment_operator expression
+                    | CONST VAR assignment_operator expression
+                    | LET VAR type_spec assignment_operator expression
+                    | CONST VAR type_spec assignment_operator expression
 
 assignment_operator : EQUALS
                     | PLUS_EQUALS
@@ -58,6 +66,8 @@ type_spec           : COLON type
 
 type                : TYPE
                     | VAR LT generic_list GT
+                    | MULTIPLY CONST type
+                    | MULTIPLY type
 
 generic             : type
                     | atom
@@ -80,7 +90,7 @@ args                : VAR type_spec
                     | args COMMA args
 
 type_signature      : type
-                    | type_signature COMMA type_signature
+                    | type COMMA type_signature
 
 task_header         : TASK VAR LPAREN RPAREN RARR type DO
                     | TASK VAR LPAREN args RPAREN RARR type DO
@@ -187,6 +197,8 @@ exponentiation      : primary POWER factor
 
 primary             : primary DOT VAR
                     | primary LSQUARE expression RSQUARE
+                    | primary MULTIPLY
+                    | BIT_AND primary
                     | function_call
                     | class_construction
                     | atom

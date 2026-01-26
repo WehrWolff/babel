@@ -118,6 +118,11 @@ class Lexer {
             return tokens;
         }
 
+        static void handleComments(std::vector<Token>& tokens) {
+            // just remove all comments for now
+            std::erase_if(tokens, [](const Token& token) { return token.getType() == "COMMENT"; });
+        }
+
         static std::vector<Token> insertSemicolons(std::vector<Token>& tokens) {
             auto subv = std::ranges::unique(tokens, [](const Token& a, const Token& b) { return a.getType() == "NEWLINE" && b.getType() == "NEWLINE"; });
             tokens.erase(subv.begin(), tokens.end());

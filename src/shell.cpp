@@ -17,8 +17,13 @@
 void run(const Lexer& lexer, const Parser& parser, const std::string& text) {
     std::vector<Token> tokens = lexer.tokenize(text);
     Lexer::insertSemicolons(tokens);
+    Lexer::handleComments(tokens);
     std::cout << tokens << std::endl;
-    std::visit([](const auto& value) { /* std::cout << value << std::endl; */ }, parser.parse(tokens));
+    // std::visit([](const auto& value) { /* std::cout << value << std::endl; */ }, parser.parse(tokens));
+    std::variant<TreeNode, std::string> out = parser.parse(tokens);
+    
+    if (std::holds_alternative<std::string>(out))
+        std::cout << std::get<std::string>(out) << '\n';
 }
 
 Parser loadParserData(const std::filesystem::path& project_root) {
@@ -43,8 +48,9 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"EXTERN", "\\bextern\\b"},
         {"TASK", "\\btask\\b"},
         {"STRUCT", "\\bstruct\\b"},
-        //{"STORAGE_MODIFIER", "\\b(?:static|const|final)\\b"},
-        {"VARDECL", "\\b(?:let|const)\\b"},
+        {"COMMENT", R"(\\\\.*)"},
+        {"LET", "\\blet\\b"},
+        {"CONST", "\\bconst\\b"},
         {"STRING", R"~("(\\.|[^"\\])*")~"},
         {"CHAR", "'[^']{1}'"},
         {"FLOATING_POINT", "\\d*\\.\\d+"},

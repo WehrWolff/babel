@@ -191,6 +191,41 @@ class AccessElementOperatorAST : public BaseAST {
         }
 };
 
+class DereferenceOperatorAST : public BaseAST {
+    std::unique_ptr<BaseAST> Var;
+    bool requiresLValue = false;
+
+    public:
+        explicit DereferenceOperatorAST(std::unique_ptr<BaseAST> Var) : Var(std::move(Var)) {}
+        llvm::Value *codegen() override;
+        BabelType getType() const override { return *(Var->getType().getPointer().to); }
+        bool isComptimeAssignable() const override { return false; }
+        llvm::Value *requireLValue() override {
+            requiresLValue = true;
+            llvm::Value* lVal = codegen();
+            requiresLValue = false;
+            return lVal;
+        }
+};
+
+class AddressOfOperatorAST : public BaseAST {
+    std::unique_ptr<VariableAST> Var;
+    const BabelType To;
+
+    public:
+        explicit AddressOfOperatorAST(std::unique_ptr<BaseAST> _Var) : To(_Var->getType()) {
+            BaseAST* const stored_ptr = _Var.release();
+            Var = std::unique_ptr<VariableAST>(dynamic_cast<VariableAST*>(stored_ptr));
+            if (!Var) {
+                _Var.reset(stored_ptr);
+                babel_panic("Cannot create pointer from non-variable");
+            }
+        }
+        llvm::Value *codegen() override;
+        BabelType getType() const override { return BabelType::Pointer(&To, Var->getConstness()); }
+        bool isComptimeAssignable() const override { return Var->isComptimeAssignable(); }
+};
+
 // class for when binary operators are used
 class BinaryOperatorAST : public BaseAST {
     const std::string Op;
@@ -539,6 +574,10 @@ llvm::Value *BinaryOperatorAST::codegen() {
         } else if (auto *Arr = dynamic_cast<AccessElementOperatorAST*>(LHS.get())) {
             llvm::Value *LHSVal = Arr->requireLValue();
             return Builder->CreateStore(RHS->codegen(), LHSVal);
+        } else if (auto *Deref = dynamic_cast<DereferenceOperatorAST*>(LHS.get())) {
+            llvm::Value *LHSVal = Deref->requireLValue();
+            StoreOrMemCpy(RHS.get(), RHS->getType(), LHSVal, Deref->getType());
+            return nullptr;
         } else {
             babel_panic("Destination of '=' must be assignable");
         }
@@ -633,6 +672,25 @@ llvm::Value *AccessElementOperatorAST::codegen() {
     }
     
     return Builder->CreateLoad(resolveLLVMType(*(Container->getType().getArray().inner)), elmntPtr, "arrtmp");
+}
+
+llvm::Value *DereferenceOperatorAST::codegen() {
+    if (!Var->getType().isPointer()) {
+        babel_panic("Cannot dereference non-pointer");
+    }
+
+    if (requiresLValue) {
+        if (Var->getType().getPointer().pointsToConst)
+            babel_panic("The pointer points to constant data");
+
+        return Var->codegen();
+    }
+
+    return Builder->CreateLoad(resolveLLVMType(*(Var->getType().getPointer().to)), Var->codegen(), "dereftmp");
+}
+
+llvm::Value *AddressOfOperatorAST::codegen() {
+    return Var->requireLValue();
 }
 
 llvm::Value *ReturnStmtAST::codegen() {

@@ -41,7 +41,7 @@ struct TreeNode {
     }
 };
 
-BabelType getBabelType(TreeNode node) {
+BabelType getBabelType(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& stack) {
     // ignore optionals, arrays and template stuff for now
 
     const std::unordered_map<std::string, BabelType> TypeMap = {
@@ -62,7 +62,26 @@ BabelType getBabelType(TreeNode node) {
         {"void", BabelType::Void()},
     };
 
-    return TypeMap.at(node.data.value());
+    BabelType type = TypeMap.at(std::get<TreeNode>(stack.top()).data.value()); stack.pop();
+
+    // TODO: rethink this, there doesn't have to be a colon (e.g. extern task lalala() => void)
+    // should work for now tho (because of bottom return)
+    if (std::holds_alternative<TreeNode>(stack.top()) && std::get<TreeNode>(stack.top()).name == "COLON") {
+        return type;
+    }
+
+    while (std::holds_alternative<TreeNode>(stack.top()) && (std::get<TreeNode>(stack.top()).name == "MULTIPLY" || std::get<TreeNode>(stack.top()).name == "CONST")) {
+        bool isConst = std::get<TreeNode>(stack.top()).name == "CONST";
+        if (isConst)
+            stack.pop();
+        
+        assert(std::get<TreeNode>(stack.top()).name == "MULTIPLY"); stack.pop();
+
+        const BabelType* stored = TheArena.make(type);
+        type = BabelType::Pointer(stored, isConst);
+    }
+
+    return type;
 }
 
 void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nodeStack, std::string_view type, int removeCount) {
@@ -80,6 +99,8 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
             node = std::make_unique<VariableAST>(atom.data.value(), std::nullopt, false, false, false);
         } else if (atom.name == "STRING") {
             node = std::make_unique<CStringAST>(unescapeString(atom.data.value().substr(1, atom.data.value().size() - 2)));
+        } else if (atom.name == "CHAR") {
+            node = std::make_unique<CharacterAST>(atom.data.value().at(1));
         }
 
         //std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
@@ -105,6 +126,12 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
             std::unique_ptr<BaseAST> container = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
 
             node = std::make_unique<AccessElementOperatorAST>(std::move(container), std::move(index));
+        } else if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "MULTIPLY") {
+            nodeStack.pop();
+            node = std::make_unique<DereferenceOperatorAST>(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top()))); nodeStack.pop();
+        } else {
+            node = std::make_unique<AddressOfOperatorAST>(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top()))); nodeStack.pop();
+            nodeStack.pop(); // ampersand
         }
     } else if (type == "inversion" || type == "factor") {
         std::unique_ptr<BaseAST> operand;
@@ -128,10 +155,9 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         
         std::optional<BabelType> varType = std::nullopt;
         // TODO: Handle the new typing system! (also in the task headers/externs)
+        // TODO: DIFFERENT CHECK!
         if (std::get<TreeNode>(nodeStack.top()).name == "TYPE") {
-            // varType = getBabelType(std::get<TreeNode>(nodeStack.top()).data.value()); nodeStack.pop();
-            varType = getBabelType(std::get<TreeNode>(nodeStack.top())); nodeStack.pop();
-
+            varType = getBabelType(nodeStack);
             nodeStack.pop(); // COLON
         }
 
@@ -139,10 +165,10 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
 
         bool isDeclaration = false;
         bool isConstant = false;
-        if (!nodeStack.empty() && std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "VARDECL") {
+        if (!nodeStack.empty() && std::holds_alternative<TreeNode>(nodeStack.top()) && (std::get<TreeNode>(nodeStack.top()).name == "LET" || std::get<TreeNode>(nodeStack.top()).name == "CONST")) {
             TreeNode vardecl = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
             isDeclaration = true;
-            isConstant = vardecl.data.value() == "const";
+            isConstant = vardecl.name == "CONST";
         }
 
         if (auto subop = op.children.front().data.value(); subop != "=") {
@@ -169,6 +195,30 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
             node = std::make_unique<BinaryOperatorAST>("=", std::make_unique<AccessElementOperatorAST>(std::make_unique<VariableAST>(var.data.value(), std::nullopt, false, false, false), std::move(index)), std::move(subexpr));
         } else {
             node = std::make_unique<BinaryOperatorAST>(subop, std::make_unique<AccessElementOperatorAST>(std::make_unique<VariableAST>(var.data.value(), std::nullopt, false, false, false), std::move(index)), std::move(rhs));
+        }
+    } else if (type == "indirect_assignment") {
+        std::unique_ptr<BaseAST> rhs = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+        TreeNode op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
+
+        TreeNode chained_deref = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
+        TreeNode var = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
+
+        auto makeDerefExpr = [&](void) {
+            std::unique_ptr<BaseAST> expr =
+                std::make_unique<VariableAST>(var.data.value(), std::nullopt, false, false, false);
+
+            for (size_t i = 0; i < chained_deref.children.size(); ++i) {
+                expr = std::make_unique<DereferenceOperatorAST>(std::move(expr));
+            }
+
+            return expr;
+        };
+
+        if (auto subop = op.children.front().data.value(); subop != "=") {
+            auto subexpr = std::make_unique<BinaryOperatorAST>(subop.substr(0, subop.size() - 1), makeDerefExpr(), std::move(rhs));
+            node = std::make_unique<BinaryOperatorAST>("=", makeDerefExpr(), std::move(subexpr));
+        } else {
+            node = std::make_unique<BinaryOperatorAST>(subop, makeDerefExpr(), std::move(rhs));
         }
     } else if (type == "if_stmt") {
         nodeStack.pop(); // END
@@ -264,14 +314,12 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
 
         node = std::make_unique<LabelStmtAST>(name);
     } else if (type == "extern_task") {
-        // BabelType retType = getBabelType(std::get<TreeNode>(nodeStack.top()).data.value()); nodeStack.pop();
-        BabelType retType = getBabelType(std::get<TreeNode>(nodeStack.top())); nodeStack.pop();
+        BabelType retType = getBabelType(nodeStack);
         nodeStack.pop(); nodeStack.pop(); // RARR and RPAREN
 
         std::deque<BabelType> ArgTypes;
         while (std::get<TreeNode>(nodeStack.top()).name != "LPAREN") {
-            // ArgTypes.push_front(getBabelType(std::get<TreeNode>(nodeStack.top()).data.value())); nodeStack.pop();
-            ArgTypes.push_front(getBabelType(std::get<TreeNode>(nodeStack.top()))); nodeStack.pop();
+            ArgTypes.push_front(getBabelType(nodeStack));
 
             if (std::get<TreeNode>(nodeStack.top()).name == "COMMA")
                 nodeStack.pop();
@@ -293,16 +341,14 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         std::unique_ptr<BaseAST> block = std::make_unique<BlockAST>(std::move(statements));
 
         nodeStack.pop(); // DO
-        // BabelType retType = getBabelType(std::get<TreeNode>(nodeStack.top()).data.value()); nodeStack.pop();
-        BabelType retType = getBabelType(std::get<TreeNode>(nodeStack.top())); nodeStack.pop();
+        BabelType retType = getBabelType(nodeStack);
         nodeStack.pop(); nodeStack.pop(); // RARR and RPAREN
 
         std::deque<std::string> ArgNames;
         std::deque<BabelType> ArgTypes;
         while (std::get<TreeNode>(nodeStack.top()).name != "LPAREN") {
             // assuming no default value for now
-            // ArgTypes.push_front(getBabelType(std::get<TreeNode>(nodeStack.top()).data.value())); nodeStack.pop();
-            ArgTypes.push_front(getBabelType(std::get<TreeNode>(nodeStack.top()))); nodeStack.pop();
+            ArgTypes.push_front(getBabelType(nodeStack));
             nodeStack.pop(); // COLON
             ArgNames.push_front(std::get<TreeNode>(nodeStack.top()).data.value()); nodeStack.pop();
 

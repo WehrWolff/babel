@@ -33,8 +33,15 @@ struct ArrayType {
     bool operator==(const ArrayType& that) const;
 };
 
+struct PointerType {
+    const BabelType* to;
+    bool pointsToConst;
+
+    bool operator==(const PointerType& that) const;
+};
+
 struct BabelType {
-    std::variant<BasicType, ArrayType> type;
+    std::variant<BasicType, ArrayType, PointerType> type;
 
     static BabelType Int() { return BabelType{BasicType::Int}; }
     static BabelType Int8() { return BabelType{BasicType::Int8}; }
@@ -52,12 +59,15 @@ struct BabelType {
     static BabelType CString() { return BabelType{BasicType::CString}; }
     static BabelType Void() { return BabelType{BasicType::Void}; }
     static BabelType Array(const BabelType* inner, size_t size) { return BabelType{ArrayType{inner, size}}; }
+    static BabelType Pointer(const BabelType* to, const bool pointsToConst) { return BabelType{PointerType{to, pointsToConst}}; }
 
     bool isBasic() const { return std::holds_alternative<BasicType>(type); }
     bool isArray() const { return std::holds_alternative<ArrayType>(type); }
+    bool isPointer() const { return std::holds_alternative<PointerType>(type); }
 
     BasicType getBasic() const { return std::get<BasicType>(type); }
     ArrayType getArray() const { return std::get<ArrayType>(type); }
+    PointerType getPointer() const { return std::get<PointerType>(type); }
 
     bool operator==(const BabelType& that) const = default;
 };
@@ -65,12 +75,26 @@ struct BabelType {
 bool ArrayType::operator==(const ArrayType& that) const {
     return *inner == *that.inner && size == that.size;
 }
+
+bool PointerType::operator==(const PointerType& that) const {
+    return *to == *that.to && pointsToConst == that.pointsToConst;
+}
 template <>
 struct std::hash<ArrayType> {
     size_t operator()(const ArrayType& a) const {
         size_t seed = 0;
         boost::hash_combine(seed, *a.inner);
         boost::hash_combine(seed, a.size);
+        return seed;
+    }
+};
+
+template <>
+struct std::hash<PointerType> {
+    size_t operator()(const PointerType& p) const {
+        size_t seed = 0;
+        boost::hash_combine(seed, *p.to);
+        boost::hash_combine(seed, p.pointsToConst);
         return seed;
     }
 };
@@ -88,12 +112,34 @@ inline std::size_t hash_value(const ArrayType& a) {
     return seed;
 }
 
+inline std::size_t hash_value(const PointerType& p) {
+    std::size_t seed = 0;
+    boost::hash_combine(seed, *p.to);
+    boost::hash_combine(seed, p.pointsToConst);
+    return seed;
+}
+
 inline std::size_t hash_value(const BabelType& t) {
     return boost::hash_value(t.type); // variant hash
 }
 
 static std::unique_ptr<llvm::LLVMContext> TheContext;
 static std::unique_ptr<llvm::IRBuilder<>> Builder;
+
+class TypeArena {
+    std::vector<std::unique_ptr<BabelType>> storage;
+
+public:
+    template<typename... Args>
+    const BabelType* make(Args&&... args) {
+        storage.push_back(
+            std::make_unique<BabelType>(std::forward<Args>(args)...)
+        );
+        return storage.back().get();
+    }
+};
+
+static TypeArena TheArena;
 
 llvm::Type *resolveLLVMType(BabelType type) {
     using enum BasicType;
@@ -127,6 +173,9 @@ llvm::Type *resolveLLVMType(BabelType type) {
 
             case CString:
                 return llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*TheContext));
+            
+            case Character:
+                return llvm::Type::getInt8Ty(*TheContext);
 
             case Void:
                 return llvm::Type::getVoidTy(*TheContext);
@@ -134,33 +183,12 @@ llvm::Type *resolveLLVMType(BabelType type) {
             default:
                 babel_panic("Unknow type");
         }
+    } else if (type.isArray()) {
+        return llvm::ArrayType::get(resolveLLVMType(*type.getArray().inner), type.getArray().size);
     }
-    
-    return llvm::ArrayType::get(resolveLLVMType(*type.getArray().inner), type.getArray().size);
-}
 
-BabelType getBabelType(const std::string& name) {
-    // ignore optionals, arrays and template stuff for now
-
-    const std::unordered_map<std::string, BabelType, TransparentStringHash, std::equal_to<>> TypeMap = {
-        {"int", BabelType::Int()},
-        {"int8", BabelType::Int8()},
-        {"int16", BabelType::Int16()},
-        {"int32", BabelType::Int32()},
-        {"int64", BabelType::Int64()},
-        {"int128", BabelType::Int128()},
-        {"float", BabelType::Float()},
-        {"float16", BabelType::Float16()},
-        {"float32", BabelType::Float32()},
-        {"float64", BabelType::Float64()},
-        {"float128", BabelType::Float128()},
-        {"bool", BabelType::Boolean()},
-        {"char", BabelType::Character()},
-        {"cstr", BabelType::CString()},
-        {"void", BabelType::Void()},
-    };
-
-    return TypeMap.at(name);
+    // return llvm::PointerType::getUnqual(resolveLLVMType(*type.getPointer().to));
+    return llvm::PointerType::getUnqual(*TheContext);
 }
 
 std::string getBabelTypeName(BabelType type) {
@@ -191,6 +219,8 @@ std::string getBabelTypeName(BabelType type) {
         }
     } else if (type.isArray()) {
         return "Array<" + getBabelTypeName(*type.getArray().inner) + ">";
+    } else if (type.isPointer()) {
+        return getBabelTypeName(*type.getPointer().to) + "*";
     }
 
     babel_unreachable();
