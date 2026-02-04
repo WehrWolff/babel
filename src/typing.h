@@ -52,7 +52,7 @@ struct BabelType {
     static BabelType Int32() { return BabelType{BasicType::Int32}; }
     static BabelType Int64() { return BabelType{BasicType::Int64}; }
     static BabelType Int128() { return BabelType{BasicType::Int128}; }
-    static BabelType IntN(uint bitWidth);
+    static BabelType IntN(unsigned bitWidth);
     static BabelType Float() { return BabelType{BasicType::Float32}; }
     static BabelType Float16() { return BabelType{BasicType::Float16}; }
     static BabelType Float32() { return BabelType{BasicType::Float32}; }
@@ -76,7 +76,7 @@ struct BabelType {
     bool operator==(const BabelType& that) const = default;
 };
 
-BabelType BabelType::IntN(uint bitWidth) {
+BabelType BabelType::IntN(unsigned bitWidth) {
     switch (bitWidth) {
         case 8: return BabelType::Int8();
         case 16: return BabelType::Int16();

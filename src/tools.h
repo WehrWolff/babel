@@ -246,7 +246,7 @@ std::tuple<llvm::APInt, BabelType> parseInt(std::string_view s, int prefix, uint
     }
 
     char suffix = s.substr(prefix + len).empty() ? '\0' : s.substr(prefix + len).back();
-    uint bitWidth;
+    unsigned bitWidth;
     switch (suffix) {
         case 'B': case 'b': bitWidth = 8; break;
         case 'S': case 's': bitWidth = 16; break;
