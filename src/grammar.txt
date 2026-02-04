@@ -218,6 +218,7 @@ params              : param COMMA params
                     | param
 
 atom                : STRING
+                    | CSTRING
                     | CHAR
                     | BOOL
                     | INTEGER

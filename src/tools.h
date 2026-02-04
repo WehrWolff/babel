@@ -9,7 +9,10 @@
 #include <optional>
 #include <string>
 
+#include "llvm/ADT/APFloat.h"
+
 #include "util.hpp"
+#include "typing.h"
 
 template <typename T>
 struct is_pair : std::false_type {};
@@ -231,6 +234,48 @@ std::string unescapeString(const std::string& oldstr) {
     }
 
     return newstr.str();
+}
+
+std::tuple<llvm::APInt, BabelType> parseInt(std::string_view s, int prefix, uint8_t base) {
+    size_t len = s.size() - prefix;
+
+    if (s.find('_') != std::string::npos) {
+        len -= 2;
+    } else if (s.find_first_of("BbSsIiLlCc", prefix) != std::string::npos) {
+        len--;
+    }
+
+    char suffix = s.substr(prefix + len).empty() ? '\0' : s.substr(prefix + len).back();
+    uint bitWidth;
+    switch (suffix) {
+        case 'B': case 'b': bitWidth = 8; break;
+        case 'S': case 's': bitWidth = 16; break;
+        case 'L': case 'l': bitWidth = 64; break;
+        case 'C': case 'c': bitWidth = 128; break;
+        default : bitWidth = 32; break;
+    }
+
+    return std::make_tuple(llvm::APInt(bitWidth, s.substr(prefix, len), base), BabelType::IntN(bitWidth));
+}
+
+static const llvm::fltSemantics& fpSemanticsFromSuffix(char suffix) {
+    switch (suffix) {
+        case 'H': case 'h': return llvm::APFloatBase::IEEEhalf();
+        case 'F': case 'f': return llvm::APFloatBase::IEEEsingle();
+        case 'D': case 'd': return llvm::APFloatBase::IEEEdouble();
+        case 'Q': case 'q': return llvm::APFloatBase::IEEEquad();
+        default:            return llvm::APFloatBase::IEEEsingle();
+    }
+}
+
+BabelType fpTypeFromSuffix(char suffix) {
+    switch (suffix) {
+        case 'H': case 'h': return BabelType::Float16();
+        case 'F': case 'f': return BabelType::Float32();
+        case 'D': case 'd': return BabelType::Float64();
+        case 'Q': case 'q': return BabelType::Float128();
+        default:            return BabelType::Float32();
+    }
 }
 
 #endif /* TOOLS_HPP */

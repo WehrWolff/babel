@@ -16,8 +16,8 @@
 
 void run(const Lexer& lexer, const Parser& parser, const std::string& text) {
     std::vector<Token> tokens = lexer.tokenize(text);
-    Lexer::insertSemicolons(tokens);
     Lexer::handleComments(tokens);
+    Lexer::insertSemicolons(tokens);
     std::cout << tokens << std::endl;
     // std::visit([](const auto& value) { /* std::cout << value << std::endl; */ }, parser.parse(tokens));
     std::variant<TreeNode, std::string> out = parser.parse(tokens);
@@ -51,9 +51,9 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"COMMENT", R"(\\\\.*)"},
         {"LET", "\\blet\\b"},
         {"CONST", "\\bconst\\b"},
+        {"CSTRING", R"~(c"(\\.|[^"\\])*")~"},
         {"STRING", R"~("(\\.|[^"\\])*")~"},
         {"CHAR", "'[^']{1}'"},
-        {"FLOATING_POINT", "\\d*\\.\\d+"},
         {"BOOL", "(TRUE|FALSE)"},
         {"LPAREN", "\\("},
         {"LSQUARE", "\\["},
@@ -124,15 +124,24 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"NOT", "!"},
         {"LT", "<"},
         {"GT", ">"},
-        {"DOT", "\\."},
         {"COMMA", ","},
         {"COLON", ":"},
         {"SEMICOLON", ";"},
         {"NEWLINE", "\n"},
         {"NULL", "null"},
         {"NEW", "new"},
+        {"FLOATING_POINT", "\\b(?:NaN|Inf)(?:_[HhFfDdQq])?\\b"},
         {"VAR", "[a-zA-Z_][a-zA-Z0-9_]*"},
-        {"INTEGER", "\\d*"} //leave INTEGER here, it matches all expressions
+        {"FLOATING_POINT", "\\b[0-9](?:[0-9']*[0-9])?[eE][+-]?[0-9](?:[0-9']*[0-9])?(?:_?[HhFfDdQq])?\\b"}, // leave these before integer, so the first part is not matched as one
+        {"FLOATING_POINT", "\\b[0-9](?:[0-9']*[0-9])?\\.[0-9](?:[0-9']*[0-9])?(?:[eE][+-]?[0-9](?:[0-9']*[0-9])?)?(?:_?[HhFfDdQq])?\\b"},
+        {"FLOATING_POINT", "\\b0x[0-9A-Fa-f](?:[0-9A-Fa-f']*[0-9A-Fa-f])?[pP][+-]?[0-9](?:[0-9']*[0-9])?(?:_[HhFfDdQq])?\\b"}, // hex versions
+        {"FLOATING_POINT", "\\b0x[0-9A-Fa-f](?:[0-9A-Fa-f']*[0-9A-Fa-f])?\\.[0-9A-Fa-f](?:[0-9A-Fa-f']*[0-9A-Fa-f])?(?:[pP][+-]?[0-9](?:[0-9']*[0-9])?)?(?:_[HhFfDdQq])?\\b"},
+        {"FLOATING_POINT", "\\b(?:0[ob])?[0-9](?:[0-9']*[0-9])?_?[HhFfDdQq]\\b"}, // before int, so for example 10f is not matched as one
+        {"INTEGER", "\\b(?:0[xob])?[0-9A-Fa-f](?:[0-9A-Fa-f']*[0-9A-Fa-f])?(?:_?[BbSsIiLlCc])?\\b"}, // leave this here so something like abc1 is matched as a variable
+        {"FLOATING_POINT", "\\b0x[0-9A-Fa-f](?:[0-9A-Fa-f']*[0-9A-Fa-f])?_[HhFfDdQq]\\b"}, // same as above, also int needs to be matched first (0xff)
+        {"FLOATING_POINT", "\\.[0-9](?:[0-9']*[0-9])?(?:[eE][+-]?[0-9](?:[0-9']*[0-9])?)?(?:_?[HhFfDdQq])?"}, // these may be after integer, since the dot distinguishes them immediately
+        {"FLOATING_POINT", "0x\\.[0-9A-Fa-f](?:[0-9A-Fa-f']*[0-9A-Fa-f])?(?:[pP][+-]?[0-9](?:[0-9']*[0-9])?)?(?:_[HhFfDdQq])?"},
+        {"DOT", "\\."} // needs to be matched after fp (.5)
     });
 
     return lexer;

@@ -1,3 +1,6 @@
+#ifndef TYPING_H
+#define TYPING_H
+
 #include <boost/functional/hash.hpp>
 #include <unordered_map>
 #include "llvm/IR/Type.h"
@@ -43,13 +46,14 @@ struct PointerType {
 struct BabelType {
     std::variant<BasicType, ArrayType, PointerType> type;
 
-    static BabelType Int() { return BabelType{BasicType::Int}; }
+    static BabelType Int() { return BabelType{BasicType::Int32}; }
     static BabelType Int8() { return BabelType{BasicType::Int8}; }
     static BabelType Int16() { return BabelType{BasicType::Int16}; }
     static BabelType Int32() { return BabelType{BasicType::Int32}; }
     static BabelType Int64() { return BabelType{BasicType::Int64}; }
     static BabelType Int128() { return BabelType{BasicType::Int128}; }
-    static BabelType Float() { return BabelType{BasicType::Float}; }
+    static BabelType IntN(uint bitWidth);
+    static BabelType Float() { return BabelType{BasicType::Float32}; }
     static BabelType Float16() { return BabelType{BasicType::Float16}; }
     static BabelType Float32() { return BabelType{BasicType::Float32}; }
     static BabelType Float64() { return BabelType{BasicType::Float64}; }
@@ -71,6 +75,17 @@ struct BabelType {
 
     bool operator==(const BabelType& that) const = default;
 };
+
+BabelType BabelType::IntN(uint bitWidth) {
+    switch (bitWidth) {
+        case 8: return BabelType::Int8();
+        case 16: return BabelType::Int16();
+        case 32: return BabelType::Int32();
+        case 64: return BabelType::Int64();
+        case 128: return BabelType::Int128();
+        default: babel_panic("unrecognized bit width");
+    }
+}
 
 bool ArrayType::operator==(const ArrayType& that) const {
     return *inner == *that.inner && size == that.size;
@@ -296,3 +311,5 @@ llvm::Value *performImplicitCast(llvm::Value *val, BabelType from, BabelType to)
 
     babel_panic("Cannot perform illegal type cast");
 }
+
+#endif /* TYPING_H */

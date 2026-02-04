@@ -19,7 +19,7 @@ extern task printf(cstr, int) => void
 task first_puzzle() => void do
     \\ The real puzzle input is way larger than the one in input.txt
     \\ But I don't want to bloat the repo with a ~15kB file only for demonstration
-    let fptr = fopen("input.txt", "r")
+    let fptr = fopen(c"input.txt", c"r")
 
     \\ Currently there is no undefined to initialize with
     \\ So we store some arbitrary data
@@ -34,7 +34,7 @@ task first_puzzle() => void do
     \\ I haven't bothered to write loops yet so we have to build our own
     \\ We create a label to jump to
     $loop_start
-    if fscanf(fptr, " %c%d", &direction, &distance) == 2 then
+    if fscanf(fptr, c" %c%d", &direction, &distance) == 2 then
         if direction == 'L' then
             dial = dial - distance + 100
         else
@@ -42,7 +42,7 @@ task first_puzzle() => void do
         end
 
         dial %= 100
-        printf("%d\n", dial)
+        printf(c"%d\n", dial)
         if dial == 0 then
             counter += 1
         end
@@ -52,7 +52,7 @@ task first_puzzle() => void do
     end
 
     fclose(fptr)
-    printf("We hit the 0 exactly %d times.\n", counter)
+    printf(c"We hit the 0 exactly %d times.\n", counter)
 end
 
 first_puzzle()

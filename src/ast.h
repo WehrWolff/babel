@@ -108,13 +108,42 @@ class BooleanAST : public BaseAST {
 
 // class for numeric literals which are integers
 class IntegerAST : public BaseAST {
-    const int Val;
+    llvm::APInt Val;
+    BabelType Type;
 
     public:
-        explicit IntegerAST(int Val) : Val(Val) {}
+        friend class FloatingPointAST;
+        explicit IntegerAST(std::string& s) {
+            if (s.find("''") != std::string::npos)
+                babel_panic("adjacent digit separators");
+
+            std::erase(s, '\'');
+
+            if (s.starts_with("0x")) {
+                if (s.find_first_of("SsIiLl", 2) != std::string::npos && s.at(s.size() - 2) != '_')
+                    babel_panic("invalid hex literal: type suffix requires _ as a separator");
+                
+                std::tie(Val, Type) = parseInt(s, 2, 16);
+            } else if (s.starts_with("0o")) {
+                if (s.find_first_of("89AaDdEeFf", 2) != std::string::npos || (s.find_first_of("BbCc", 2) != std::string::npos && s.find_first_of("BbCc", 2) != s.size() - 1))
+                    babel_panic("invalid octal literal: only digits 0-7 are allowed");
+
+                std::tie(Val, Type) = parseInt(s, 2, 8);
+            } else if (s.starts_with("0b")) {
+                if (s.find_first_of("23456789AaDdEeFf", 2) != std::string::npos || (s.find_first_of("BbCc", 2) != std::string::npos && s.find_first_of("BbCc", 2) != s.size() - 1))
+                    babel_panic("invalid binary literal: only digits 0 and 1 are allowed");
+
+                std::tie(Val, Type) = parseInt(s, 2, 2);
+            } else {
+                if (s.find_first_of("AaDdEeFf") != std::string::npos || (s.find_first_of("BbCc") != std::string::npos && s.find_first_of("BbCc") != s.size() - 1))
+                    babel_panic("invalid decimal literal: only digits 0-9 are allowed");
+
+                std::tie(Val, Type) = parseInt(s, 0, 10);
+            }
+        }
         llvm::Value *codegen() override { return codegenComptime(); }
         llvm::Constant *codegenComptime() override;
-        BabelType getType() const override { return BabelType::Int(); }
+        BabelType getType() const override { return Type; }
         bool isComptimeAssignable() const override { return true; }
 };
 
@@ -142,13 +171,55 @@ class CStringAST : public BaseAST {
 
 // class for numeric literals which are floating points
 class FloatingPointAST : public BaseAST {
-    const double Val;
+    llvm::APFloat Val = llvm::APFloat(0.0);
+    BabelType Type;
 
     public:
-        explicit FloatingPointAST(double Val) : Val(Val) {}
+        explicit FloatingPointAST(std::string& s) {
+            if (s.find("''") != std::string::npos)
+                babel_panic("adjacent digit separators");
+            
+            std::erase(s, '\'');
+
+            bool isGenuineFP = s.find_first_of(".EePp") != std::string::npos || s == "NaN" || s == "Inf";
+            bool isHexFloat = s.starts_with("0x");
+
+            if (!isGenuineFP) {
+                // this is an integer with type suffix
+                if (isHexFloat && s.find('_') == std::string::npos)
+                    babel_panic("invalid hex literal: type suffix requires _ as a separator");
+
+                std::string fSuffix = "HFDQ";
+                std::string iSuffix = "SILC";
+                
+                char suffix = s.back();
+                s.back() = iSuffix.at(fSuffix.find(static_cast<char>(toupper(suffix))));
+
+                auto Int = IntegerAST(s);
+                Val = llvm::APFloat(fpSemanticsFromSuffix(suffix), Int.Val);
+                Type = fpTypeFromSuffix(suffix);
+            } else {
+                if (isHexFloat && s.find_first_of("Pp") == std::string::npos)
+                    babel_panic("hex float must contain an exponent");
+
+                std::size_t len = s.size();
+                char suffix = '\0';
+                if (s.find("_") != std::string::npos) {
+                    len -= 2; suffix = s.back();
+                } else if (!isHexFloat && s != "Inf" && s.find_first_of("HhFfDdQq") != std::string::npos) {
+                    len--; suffix = s.back();
+                }
+
+                // We use Inf to indicate infinity, llvm however accepts only lowercase versions
+                std::ranges::transform(s, s.begin(), [](unsigned char c){ return std::tolower(c); });
+                
+                Val = llvm::APFloat(fpSemanticsFromSuffix(suffix), s.substr(0, len));
+                Type = fpTypeFromSuffix(suffix);
+            }
+        }
         llvm::Value *codegen() override { return codegenComptime(); }
         llvm::Constant *codegenComptime() override;
-        BabelType getType() const override { return BabelType::Float64(); }
+        BabelType getType() const override { return Type; }
         bool isComptimeAssignable() const override { return true; }
 };
 
@@ -222,6 +293,7 @@ class AddressOfOperatorAST : public BaseAST {
             }
         }
         llvm::Value *codegen() override;
+        llvm::Constant *codegenComptime() override { assert(isComptimeAssignable()); return llvm::cast<llvm::Constant>(codegen()); }
         BabelType getType() const override { return BabelType::Pointer(&To, Var->getConstness()); }
         bool isComptimeAssignable() const override { return Var->isComptimeAssignable(); }
 };
@@ -526,12 +598,11 @@ llvm::Constant *ArrayAST::codegenComptime() {
 }
 
 llvm::Constant *FloatingPointAST::codegenComptime() {
-    return llvm::ConstantFP::get(*TheContext, llvm::APFloat((float)Val));
+    return llvm::ConstantFP::get(resolveLLVMType(Type), Val);
 }
 
 llvm::Constant *IntegerAST::codegenComptime() {
-    // bit width 32
-    return llvm::ConstantInt::get(*TheContext, llvm::APInt(32, Val, true));
+    return llvm::ConstantInt::get(resolveLLVMType(Type), Val);
 }
 
 llvm::Constant *CharacterAST::codegenComptime() {

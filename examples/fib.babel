@@ -6,5 +6,5 @@ task fibonacci(n: int) => int do
     return fibonacci(n - 1) + fibonacci(n - 2)
 end
 
-extern task printd(digit: int) => void
+extern task printd(int) => void
 printd(fibonacci(42))

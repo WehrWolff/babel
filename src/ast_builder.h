@@ -90,15 +90,17 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
     if (type == "atom") {
         TreeNode atom = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
         if (atom.name == "INTEGER") {
-            node = std::make_unique<IntegerAST>(std::stoi(atom.data.value()));
+            node = std::make_unique<IntegerAST>(atom.data.value());
         } else if (atom.name == "FLOATING_POINT") {
-            node = std::make_unique<FloatingPointAST>(std::stod(atom.data.value()));
+            node = std::make_unique<FloatingPointAST>(atom.data.value());
         } else if (atom.name == "BOOL") {
             node = std::make_unique<BooleanAST>(atom.data.value());
         } else if (atom.name == "VAR") {
             node = std::make_unique<VariableAST>(atom.data.value(), std::nullopt, false, false, false);
+        } else if (atom.name == "CSTRING") {
+            node = std::make_unique<CStringAST>(unescapeString(atom.data.value().substr(2, atom.data.value().size() - 3)));
         } else if (atom.name == "STRING") {
-            node = std::make_unique<CStringAST>(unescapeString(atom.data.value().substr(1, atom.data.value().size() - 2)));
+            babel_stub();
         } else if (atom.name == "CHAR") {
             node = std::make_unique<CharacterAST>(atom.data.value().at(1));
         }

@@ -101,7 +101,7 @@ class Lexer {
                     
                     if (regex_search(input_stream, re, regex_pattern)) {
                         std::string match = re[0];
-                        if (match.size() == 0) break; //fixing wrong matches
+                        assert(match.size() != 0 && "Matched token is empty");
                         tokens.emplace_back(token_type, match);
                         input_stream = re.suffix();
                         matched = true;
