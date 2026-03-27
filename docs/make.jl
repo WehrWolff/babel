@@ -4,7 +4,12 @@ import Documenter.GitHubActions
 
 const Manual = [
     "manual/getting-started.md",
-    "manual/constants.md",
+    "manual/variables.md",
+    "manual/types.md",
+    "manual/numbers.md",
+    "manual/pointers.md",
+    "manual/arrays.md",
+    "manual/control-flow.md"
 ]
 
 if "pdf" in ARGS

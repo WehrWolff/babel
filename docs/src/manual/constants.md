@@ -1,3 +1,0 @@
-# Constants
-
-They are cool.
