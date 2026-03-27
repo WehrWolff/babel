@@ -7,9 +7,9 @@
 \\ Currently there is no standard library, but we can extern tasks from libc directly
 \\ fopen, fscanf and fclose all use a FILE*, where FILE is a struct
 \\ We don't have the FILE struct since it comes from C
-\\ Therefor we use a *void as an opaque pointer
+\\ Therefore we use a *void as an opaque pointer
 extern task fopen(cstr, cstr) => *void
-extern task fscanf(*void, cstr, *int, *int) => int
+extern task fscanf(*void, cstr, ...) => int
 extern task fclose(*void) => void
 extern task printf(cstr, int) => void
 

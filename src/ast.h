@@ -72,12 +72,16 @@ class VariableAST : public BaseAST {
 
     public:
         VariableAST(const std::string &Name, const std::optional<BabelType>& Type, const bool isConst, const bool isDecl, const bool isComptime) : Name(Name), Type(Type), isConst(isConst), isDecl(isDecl), isComptime(isComptime) {
-            if (isDecl) { insertSymbol(); }
-            else { this->isConst = GlobalValues.at(Name).isConstant; this->isComptime = GlobalValues.at(Name).isComptime; }
+           if (GlobalValues.contains(Name)) { this->isConst = GlobalValues.at(Name).isConstant; this->isComptime = GlobalValues.at(Name).isComptime; }
+           else if (Type.has_value()) { insertSymbol(); }
+            /*  if (isDecl) { insertSymbol(); }
+            // else { this->isConst = GlobalValues.at(Name).isConstant; this->isComptime = GlobalValues.at(Name).isComptime; }
+            else if (GlobalValues.contains(Name)) { this->isConst = GlobalValues.at(Name).isConstant; this->isComptime = GlobalValues.at(Name).isComptime; }
             // TODO: each variable auto updates itself so the node knows wether its variable is constant or not
-            // this allows for a significant simplification of the handleAssignment method
+            // this allows for a significant simplification of the handleAssignment method */
         }
         void insertSymbol() const;
+        static void insertSymbol(const std::string& Name, BabelType type, const bool isConst, const bool isComptime);
         std::string getName() const { return Name; }
         bool getConstness() const { return isConst; }
         bool getDecl() const { return isDecl; }
@@ -366,6 +370,17 @@ class IfStmtAST : public BaseAST {
         llvm::Value *codegen() override;
 };
 
+class MacroCallAST : public BaseAST {
+    std::string name;
+    std::deque<std::variant<std::unique_ptr<BaseAST>, BabelType>> Args;
+
+    public:
+        MacroCallAST(const std::string& name, std::deque<std::variant<std::unique_ptr<BaseAST>, BabelType>> Args) : name(name), Args(std::move(Args)) {}
+        BabelType getType() const override;
+        bool isComptimeAssignable() const override { return true; }
+        llvm::Value *codegen() override;
+};
+
 // class for when a function is called
 class TaskCallAST : public BaseAST {
     std::string callsTo;
@@ -384,11 +399,16 @@ class TaskHeaderAST : public BaseAST {
     std::deque<std::string> Args;
     std::deque<BabelType> ArgTypes;
     BabelType ReturnType;
+    bool isVarArg;
 
     public:
-        TaskHeaderAST(const std::string &Name, std::deque<std::string> Args, std::deque<BabelType> ArgTypes, BabelType ReturnType) : Name(Name), Args(std::move(Args)), ArgTypes(std::move(ArgTypes)), ReturnType(ReturnType) {
+        TaskHeaderAST(const std::string &Name, std::deque<std::string> Args, std::deque<BabelType> ArgTypes, BabelType ReturnType, bool isVarArg) : Name(Name), Args(std::move(Args)), ArgTypes(std::move(ArgTypes)), ReturnType(ReturnType), isVarArg(isVarArg) {
             TaskTable[Name] = {this->ArgTypes, ReturnType};
             PolymorphTable[Name] = PolymorphTable.contains(Name);
+
+            for (size_t i = 0; i < Args.size(); i++) {
+                VariableAST::insertSymbol(Args[i], ArgTypes[i], false, false);
+            }
         }
         llvm::Function *codegen() override;
         const std::string &getName() const { return Name; }
@@ -430,6 +450,11 @@ void VariableAST::insertSymbol() const {
     NamedValues[Name] = {nullptr, Type.value(), isConst};
 }
 
+void VariableAST::insertSymbol(const std::string& Name, BabelType type, const bool isConst, const bool isComptime) {
+    GlobalValues[Name] = {nullptr, type, isConst, isComptime, nullptr};
+    NamedValues[Name] = {nullptr, type, isConst};
+}
+
 BabelType VariableAST::getType() const {
     if (Type.has_value())
         return Type.value();
@@ -443,6 +468,11 @@ BabelType VariableAST::getType() const {
 }
 
 BabelType BinaryOperatorAST::getType() const {
+    // this is a special case, since we cast to double
+    if (Op == "/") {
+        return BabelType::Float64();
+    }
+
     if (canImplicitCast(LHS->getType(), RHS->getType()))
         return RHS->getType();
     else if (canImplicitCast(RHS->getType(), LHS->getType()))
@@ -471,7 +501,6 @@ void StoreOrMemCpy(BaseAST* src, BabelType srcType, llvm::Value* dest, BabelType
             srcVal = performImplicitCast(srcVal, srcType, destType);
 
         Builder->CreateMemCpy(dest, align, srcVal, align, size);
-        printf("Potentially dangerous\n");
     } else {
         llvm::Value* srcVal = src->codegen();
         if (canImplicitCast(srcType, destType))
@@ -765,7 +794,7 @@ llvm::Value *AddressOfOperatorAST::codegen() {
 }
 
 llvm::Value *ReturnStmtAST::codegen() {
-    llvm::Function const *TheFunction = Builder->GetInsertBlock()->getParent();
+    const llvm::Function *TheFunction = Builder->GetInsertBlock()->getParent();
     if (GLOBAL_SCOPE)
         babel_panic("Return statements must be inside of a task");
 
@@ -872,6 +901,147 @@ llvm::Value *IfStmtAST::codegen() {
     return nullptr; //llvm::Constant::getNullValue(llvm::Type::getVoidTy(*TheContext));
 }
 
+BabelType MacroCallAST::getType() const {
+    if (name == "va_arg") {
+        if (Args.size() != 2 || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[0]) || !std::holds_alternative<BabelType>(Args[1]))
+            babel_panic("@va_arg requires list name and type parameter");
+        
+        return std::get<BabelType>(Args[1]);
+    } else {
+        return BabelType::Void();
+    }
+}
+
+llvm::Value *MacroCallAST::codegen() {
+    if (name == "va_list") {
+
+        #if defined(_M_ARM64) || defined(__aarch64__)
+            #define __BUILTIN_VA_LIST llvm::StructType::get(*TheContext, {\
+                llvm::PointerType::get(*TheContext, 0),\
+                llvm::PointerType::get(*TheContext, 0),\
+                llvm::PointerType::get(*TheContext, 0),\
+                llvm::IntegerType::getInt32Ty(*TheContext),\
+                llvm::IntegerType::getInt32Ty(*TheContext)\
+            })
+        #elif defined(_WIN32) || defined(__i386__)
+            #define __BUILTIN_VA_LIST llvm::PointerType::get(*TheContext, 0)
+        #elif defined(__powerpc__)
+            #define __BUILTIN_VA_LIST llvm::ArrayType::get(llvm::StructType::get(*TheContext, {\
+                llvm::IntegerType::getInt8Ty(*TheContext),\
+                llvm::IntegerType::getInt8Ty(*TheContext),\
+                llvm::IntegerType::getInt16Ty(*TheContext),\
+                llvm::PointerType::get(*TheContext, 0),\
+                llvm::PointerType::get(*TheContext, 0)\
+            }), 1)
+        #elif defined(__s390__) || defined(__zarch__)
+            #define __BUILTIN_VA_LIST llvm::ArrayType::get(llvm::StructType::get(*TheContext, {\
+                llvm::IntegerType::getInt64Ty(*TheContext),\
+                llvm::IntegerType::getInt64Ty(*TheContext),\
+                llvm::PointerType::get(*TheContext, 0),\
+                llvm::PointerType::get(*TheContext, 0)\
+            }), 1)
+        #elif defined(__hexagon__)
+            #define __BUILTIN_VA_LIST llvm::StructType::get(*TheContext, {\
+                llvm::PointerType::get(*TheContext, 0),\
+                llvm::PointerType::get(*TheContext, 0),\
+                llvm::PointerType::get(*TheContext, 0)\
+            })
+        #elif defined(__xtensa__)
+            #define __BUILTIN_VA_LIST llvm::StructType::get(*TheContext, {\
+                llvm::PointerType::get(*TheContext, 0),\
+                llvm::PointerType::get(*TheContext, 0),\
+                llvm::IntegerType::getInt32Ty(*TheContext)\
+            })
+        #elif defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+            #define __BUILTIN_VA_LIST llvm::ArrayType::get(llvm::StructType::get(*TheContext, {\
+                llvm::IntegerType::getInt32Ty(*TheContext),\
+                llvm::IntegerType::getInt32Ty(*TheContext),\
+                llvm::PointerType::get(*TheContext, 0),\
+                llvm::PointerType::get(*TheContext, 0)\
+            }), 1)
+        #else
+            // most other platforms like ARM32 just use a { ptr }, so thats our best guess
+            #define __BUILTIN_VA_LIST llvm::StructType::get(*TheContext, llvm::ArrayRef<llvm::Type*>{llvm::PointerType::get(*TheContext, 0)})
+        #endif
+
+        llvm::AllocaInst* ap = Builder->CreateAlloca(__BUILTIN_VA_LIST);
+
+        if (Args.size() != 1 || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[0]))
+            babel_panic("@va_list requires name parameter");
+
+        auto var = dynamic_cast<VariableAST*>(std::get<std::unique_ptr<BaseAST>>(Args[0]).get());
+        NamedValues[var->getName()] = {ap, BabelType::Pointer(TheArena.make(BabelType::Void()), true), true};
+
+        return nullptr;
+    } else if (name == "va_start") {
+        llvm::Function* va_start = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::vastart, {llvm::PointerType::get(*TheContext, 0)});
+        
+        if (Args.size() != 1 || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[0]))
+            babel_panic("@va_start requires name parameter");
+
+        auto var = dynamic_cast<VariableAST*>(std::get<std::unique_ptr<BaseAST>>(Args[0]).get());
+        llvm::Value* ap = NamedValues.at(var->getName()).val;
+
+        if (llvm::Type* type = ap->getType(); type->isArrayTy()) {
+            llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
+            ap = Builder->CreateInBoundsGEP(type, ap, {zero, zero});
+        }
+
+        Builder->CreateCall(va_start, {ap});
+        return nullptr;
+    } else if (name == "va_end") {
+        llvm::Function* va_end = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::vaend, {llvm::PointerType::get(*TheContext, 0)});
+        
+        if (Args.size() != 1 || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[0]))
+            babel_panic("@va_end requires name parameter");
+
+        auto var = dynamic_cast<VariableAST*>(std::get<std::unique_ptr<BaseAST>>(Args[0]).get());
+        llvm::Value* ap = NamedValues.at(var->getName()).val;
+
+        if (llvm::Type* type = ap->getType(); type->isArrayTy()) {
+            llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
+            ap = Builder->CreateInBoundsGEP(type, ap, {zero, zero});
+        }
+
+        Builder->CreateCall(va_end, {ap});
+        return nullptr;
+    } else if (name == "va_copy") {
+        llvm::Function* va_copy = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::vacopy, {llvm::PointerType::get(*TheContext, 0), llvm::PointerType::get(*TheContext, 0)});
+        
+        if (Args.size() != 2 || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[0]) || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[1]))
+            babel_panic("@va_copy requires destination and source parameter");
+
+        auto dst = dynamic_cast<VariableAST*>(std::get<std::unique_ptr<BaseAST>>(Args[0]).get());
+        auto src = dynamic_cast<VariableAST*>(std::get<std::unique_ptr<BaseAST>>(Args[1]).get());
+        llvm::Value* ap = NamedValues.at(dst->getName()).val;
+        llvm::Value* aq = NamedValues.at(src->getName()).val;
+
+        if (llvm::Type* type = ap->getType(); type->isArrayTy()) {
+            llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
+            ap = Builder->CreateInBoundsGEP(type, ap, {zero, zero});
+            aq = Builder->CreateInBoundsGEP(type, aq, {zero, zero});
+        }
+
+        Builder->CreateCall(va_copy, {ap, aq});
+        return nullptr;
+    } else if (name == "va_arg") {
+        if (Args.size() != 2 || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[0]) || !std::holds_alternative<BabelType>(Args[1]))
+            babel_panic("@va_arg requires list name and type parameter");
+
+        auto var = dynamic_cast<VariableAST*>(std::get<std::unique_ptr<BaseAST>>(Args[0]).get());
+        llvm::Value* ap = NamedValues.at(var->getName()).val;
+
+        if (llvm::Type* type = ap->getType(); type->isArrayTy()) {
+            llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
+            ap = Builder->CreateInBoundsGEP(type, ap, {zero, zero});
+        }
+        
+        return Builder->CreateVAArg(ap, resolveLLVMType(std::get<BabelType>(Args[1])));
+    } else {
+        babel_panic("No macro with name @%s exists", name.c_str());
+    }
+}
+
 llvm::Value *TaskCallAST::codegen() {
     if (callsTo == "main") babel_panic("Calling main is not allowed, as the programs entry point it is invoked automatically");
 
@@ -899,7 +1069,11 @@ llvm::Value *TaskCallAST::codegen() {
     llvm::Function *CalleF = TheModule->getFunction(callsTo);
     if (!CalleF) babel_panic("Unknown Task '%s' referenced", callsTo.c_str());
 
-    if (CalleF->arg_size() != Args.size()) babel_panic("Passed incorrect number of arguments (expected %d but got %d)", static_cast<int>(CalleF->arg_size()), static_cast<int>(Args.size()));
+    if (CalleF->arg_size() != Args.size() && !CalleF->isVarArg())
+        babel_panic("Passed incorrect number of arguments (expected %d but got %d)", static_cast<int>(CalleF->arg_size()), static_cast<int>(Args.size()));
+
+    if (CalleF->arg_size() > Args.size() && CalleF->isVarArg())
+        babel_panic("vararg task needs at least %d arguments but got only %d", static_cast<int>(CalleF->arg_size()), static_cast<int>(Args.size()));
 
     std::vector<llvm::Value *> ArgsV;
     for (unsigned int i = 0, e = Args.size(); i != e; ++i) {
@@ -923,7 +1097,7 @@ llvm::Function *TaskHeaderAST::codegen() {
         Types.push_back(resolveLLVMType(type));
     }
 
-    llvm::FunctionType *FT = llvm::FunctionType::get(resolveLLVMType(ReturnType), Types, false);
+    llvm::FunctionType *FT = llvm::FunctionType::get(resolveLLVMType(ReturnType), Types, isVarArg);
     llvm::Function *F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, Name, TheModule.get());
 
     unsigned int idx = 0;

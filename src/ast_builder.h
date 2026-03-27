@@ -320,18 +320,31 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         nodeStack.pop(); nodeStack.pop(); // RARR and RPAREN
 
         std::deque<BabelType> ArgTypes;
+        bool isVarArg = false;
+
+        bool isFirstIter = true;
         while (std::get<TreeNode>(nodeStack.top()).name != "LPAREN") {
-            ArgTypes.push_front(getBabelType(nodeStack));
+            if (std::get<TreeNode>(nodeStack.top()).name == "VARARG") {
+                isVarArg = true;
+                nodeStack.pop(); // VARARG
+
+                if (!isFirstIter)
+                    babel_panic("variable arguments must appear last in task definition");
+            } else {
+                ArgTypes.push_front(getBabelType(nodeStack));
+            }
 
             if (std::get<TreeNode>(nodeStack.top()).name == "COMMA")
                 nodeStack.pop();
+
+            isFirstIter = false;
         }
 
         nodeStack.pop(); // LPAREN
         std::string TaskName = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
         nodeStack.pop(); nodeStack.pop(); // TASK and EXTERN
 
-        node = std::make_unique<TaskHeaderAST>(TaskName, std::deque<std::string>(ArgTypes.size(), "") , ArgTypes, retType);
+        node = std::make_unique<TaskHeaderAST>(TaskName, std::deque<std::string>(ArgTypes.size(), "") , ArgTypes, retType, isVarArg);
     } else if (type == "task_def") {
         nodeStack.pop(); // END
 
@@ -348,22 +361,57 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
 
         std::deque<std::string> ArgNames;
         std::deque<BabelType> ArgTypes;
+        bool isVarArg = false;
+
+        bool isFirstIter = true;
         while (std::get<TreeNode>(nodeStack.top()).name != "LPAREN") {
-            // assuming no default value for now
-            ArgTypes.push_front(getBabelType(nodeStack));
-            nodeStack.pop(); // COLON
-            ArgNames.push_front(std::get<TreeNode>(nodeStack.top()).data.value()); nodeStack.pop();
+            if (std::get<TreeNode>(nodeStack.top()).name == "VARARG") {
+                isVarArg = true;
+                nodeStack.pop(); // VARARG
+
+                if (!isFirstIter)
+                    babel_panic("variable arguments must appear last in task definition");
+            } else {
+                // assuming no default value for now
+                ArgTypes.push_front(getBabelType(nodeStack));
+                nodeStack.pop(); // COLON
+                ArgNames.push_front(std::get<TreeNode>(nodeStack.top()).data.value()); nodeStack.pop();
+            }
 
             if (std::get<TreeNode>(nodeStack.top()).name == "COMMA")
                 nodeStack.pop();
+
+            isFirstIter = false;
         }
 
         nodeStack.pop(); // LPAREN
         std::string TaskName = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
         nodeStack.pop(); // TASK
         
-        auto header = std::make_unique<TaskHeaderAST>(TaskName, std::move(ArgNames), std::move(ArgTypes), retType);
+        auto header = std::make_unique<TaskHeaderAST>(TaskName, std::move(ArgNames), std::move(ArgTypes), retType, isVarArg);
         node = std::make_unique<TaskAST>(std::move(header), std::move(block));
+    } else if (type == "macro_call") {
+        std::deque<std::variant<std::unique_ptr<BaseAST>, BabelType>> Args;
+        if (std::get<TreeNode>(nodeStack.top()).name == "RPAREN") {
+            nodeStack.pop(); // RPAREN
+
+            // assuming expressions/types as params
+            while (!std::holds_alternative<TreeNode>(nodeStack.top()) || std::get<TreeNode>(nodeStack.top()).name != "LPAREN") {
+                if (std::holds_alternative<TreeNode>(nodeStack.top())) {
+                    Args.emplace_front(getBabelType(nodeStack));
+                } else {
+                    Args.emplace_front(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top()))); nodeStack.pop();
+                }
+
+                if (std::get<TreeNode>(nodeStack.top()).name == "COMMA")
+                    nodeStack.pop();
+            }
+            nodeStack.pop(); // LPAREN
+        }
+
+        auto name = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
+        nodeStack.pop(); // AT
+        node = std::make_unique<MacroCallAST>(name, std::move(Args));
     } else if (type == "function_call") {
         nodeStack.pop(); // RPAREN
 

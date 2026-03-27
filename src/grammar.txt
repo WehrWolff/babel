@@ -23,6 +23,7 @@ simple_stmt         : NOOP
                     | element_assignment
                     | indirect_assignment
                     | function_call
+                    | macro_call
 
 goto_stmt           : GOTO VAR
 
@@ -87,9 +88,11 @@ block               : statement_list
 
 args                : VAR type_spec
                     | VAR type_spec EQUALS expression
+                    | VARARG
                     | args COMMA args
 
 type_signature      : type
+                    | VARARG
                     | type COMMA type_signature
 
 task_header         : TASK VAR LPAREN RPAREN RARR type DO
@@ -199,10 +202,14 @@ primary             : primary DOT VAR
                     | primary LSQUARE expression RSQUARE
                     | primary MULTIPLY
                     | BIT_AND primary
+                    | macro_call
                     | function_call
                     | class_construction
                     | atom
                     | LPAREN expression RPAREN
+
+macro_call          : AT VAR
+                    | AT VAR LPAREN generic_list RPAREN
 
 function_call       : VAR LPAREN RPAREN
                     | VAR LPAREN params RPAREN

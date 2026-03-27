@@ -43,7 +43,7 @@ Parser loadParserData(const std::filesystem::path& project_root) {
 
 Lexer setupModuleAndLexer(const std::string& file_name) {
     auto lexer = Lexer(file_name, {
-        {"TYPE", "\\b(?:int|float|bool|string|cstr|char|list|tuple|map|dict|any|void)\\b"},
+        {"TYPE", "\\b(?:int|int8|int16|int32|int64|int128|float|float16|float32|float64|float128|bool|string|cstr|char|list|tuple|map|dict|any|void)\\b"},
         {"CLASS", "\\bclass\\b"},
         {"EXTERN", "\\bextern\\b"},
         {"TASK", "\\btask\\b"},
@@ -55,6 +55,7 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"STRING", R"~("(\\.|[^"\\])*")~"},
         {"CHAR", "'[^']{1}'"},
         {"BOOL", "(TRUE|FALSE)"},
+        {"AT", "@"},
         {"LPAREN", "\\("},
         {"LSQUARE", "\\["},
         {"RSQUARE", "\\]"},
@@ -84,7 +85,8 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"LABEL_START", "\\$"},
         {"RETURN", "\\breturn\\b"},
         {"RAISE", "\\braise\\b"},
-        {"IMPORT", "\\bimp\\b"},    
+        {"IMPORT", "\\bimp\\b"},
+        {"VARARG", "\\.\\.\\."},
         {"EQEQ", "=="},
         {"PLUS_EQUALS", "\\+="},
         {"MINUS_EQUALS", "-="},
