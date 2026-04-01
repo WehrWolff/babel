@@ -2,7 +2,7 @@
 
 When you create a variable, its value will be stored somewhere into memory. That location is called a memory address. A pointer is a variable that stores such an address, its value is another address. This visualization might be handy:
 
-[![image](https://upload.wikimedia.org/wikipedia/commons/thumb/b/b4/Pointers.svg/500px-Pointers.svg.png)](https://en.wikipedia.org/wiki/Pointer_%28computer_programming%29)
+[![image](../assets/pointers.png)](https://en.wikipedia.org/wiki/Pointer_%28computer_programming%29)
 
 Here `a` is a pointer, which points to the address associated with the variable `b`. `b` is the thing pointed to, often referred to as the pointee.
 
