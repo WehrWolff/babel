@@ -5,25 +5,35 @@ terminator          : SEMICOLON
 statement_list      : statement
                     | statement statement_list
 
-statement           : simple_stmt_list
+statement           : single_stmt_list
                     | compound_stmt terminator
 
-simple_stmt_list    : simple_stmt terminator
-                    | simple_stmt terminator simple_stmt_list
+single_stmt_list    : single_stmt terminator
+                    | single_stmt terminator single_stmt_list
 
-simple_stmt         : NOOP
-                    | CONTINUE
-                    | BREAK
+single_stmt         : continue_stmt
+                    | break_stmt
                     | goto_stmt
                     | label_stmt
                     | return_stmt
                     | raise_stmt
                     | import_stmt
+                    | simple_stmt
+
+simple_stmt         : NOOP
                     | assignment
+                    | short_declaration
                     | element_assignment
                     | indirect_assignment
-                    | function_call
-                    | macro_call
+                    | expression
+
+short_declaration   : VAR COLON_EQUALS expression
+
+continue_stmt       : CONTINUE
+                    | CONTINUE VAR
+
+break_stmt          : BREAK
+                    | BREAK VAR
 
 goto_stmt           : GOTO VAR
 
@@ -84,7 +94,7 @@ compound_stmt       : task_def
                     | try_stmt
 
 block               : statement_list
-                    | simple_stmt_list
+                    | single_stmt_list
 
 args                : VAR type_spec
                     | VAR type_spec EQUALS expression
@@ -133,10 +143,18 @@ match_stmt          : MATCH expression NEWLINE cases
 cases               : CASE expression block
                     | CASE expression block cases
 
-loop_stmt           : FOR assignment SEMICOLON expression SEMICOLON expression DO block END
-                    | FOR assignment TO expression STEP expression DO block END
-                    | FOR assignment TO expression DO block END
-                    | WHILE expression DO block END
+loop_stmt           : for_loop
+                    | for_in_loop
+                    | while_loop
+
+for_loop            : FOR simple_stmt SEMICOLON expression SEMICOLON simple_stmt DO block END
+                    | LOOP_LABEL_START VAR COLON FOR simple_stmt SEMICOLON expression SEMICOLON simple_stmt DO block END
+
+for_in_loop         : FOR VAR IN VAR DO block END
+                    | LOOP_LABEL_START VAR COLON FOR VAR IN VAR DO block END
+
+while_loop          : WHILE expression DO block END
+                    | LOOP_LABEL_START VAR COLON WHILE expression DO block END
 
 try_stmt            : TRY block catch_blocks END
                     | TRY block catch_blocks FINALLY block END
@@ -158,12 +176,12 @@ conjunction         : inversion
 inversion           : NOT inversion
                     | comparison
 
-comparison          : bitwise_or EQEQ comparison
-                    | bitwise_or NOTEQ comparison
-                    | bitwise_or LTEQ comparison
-                    | bitwise_or GTEQ comparison
-                    | bitwise_or LT comparison
-                    | bitwise_or GT comparison
+comparison          : comparison EQEQ bitwise_or
+                    | comparison NOTEQ bitwise_or
+                    | comparison LTEQ bitwise_or
+                    | comparison GTEQ bitwise_or
+                    | comparison LT bitwise_or
+                    | comparison GT bitwise_or
                     | bitwise_or
 
 bitwise_or          : bitwise_or BIT_OR bitwise_xor
@@ -183,29 +201,36 @@ sum                 : sum PLUS term
                     | sum MINUS term
                     | term
 
-term                : term MULTIPLY factor
-                    | term DIVIDE factor
-                    | term INTEGER_DIVIDE factor
-                    | term MODULO factor
-                    | factor
-
-factor              : PLUS factor
-                    | MINUS factor
-                    | factor INCREMENT
-                    | factor DECREMENT
+term                : term MULTIPLY exponentiation
+                    | term DIVIDE exponentiation
+                    | term INTEGER_DIVIDE exponentiation
+                    | term MODULO exponentiation
                     | exponentiation
 
-exponentiation      : primary POWER factor
+exponentiation      : prefix POWER exponentiation
+                    | prefix
+
+prefix              : PLUS prefix
+                    | MINUS prefix
+                    | INCREMENT prefix
+                    | DECREMENT prefix
+                    | BIT_NOT prefix
+                    | BIT_AND prefix
+                    | postfix
+
+postfix             : postfix DOT VAR
+                    | postfix DOT VAR LPAREN RPAREN
+                    | postfix DOT VAR LPAREN params RPAREN
+                    | postfix LSQUARE expression RSQUARE
+                    | postfix MULTIPLY
+                    | postfix INCREMENT
+                    | postfix DECREMENT
                     | primary
 
-primary             : primary DOT VAR
-                    | primary LSQUARE expression RSQUARE
-                    | primary MULTIPLY
-                    | BIT_AND primary
+primary             : atom
                     | macro_call
                     | function_call
                     | class_construction
-                    | atom
                     | LPAREN expression RPAREN
 
 macro_call          : AT VAR
@@ -213,7 +238,6 @@ macro_call          : AT VAR
 
 function_call       : VAR LPAREN RPAREN
                     | VAR LPAREN params RPAREN
-                    | primary DOT function_call
 
 class_construction  : NEW VAR LPAREN RPAREN
                     | NEW VAR LPAREN params RPAREN
@@ -248,9 +272,6 @@ tuple               : LPAREN comma_values RPAREN
 
 set                 : LBRACE comma_values RBRACE
                     | LBRACE RBRACE
-
-kvpairs             : expression COLON expression
-                    | kvpairs COMMA kvpairs
 
 map                 : LBRACE kvpairs RBRACE
                     | LBRACE RBRACE

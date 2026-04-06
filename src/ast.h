@@ -41,12 +41,18 @@ struct TaskTypeInfo {
     BabelType ret;
 };
 
+struct LoopInfo {
+    llvm::BasicBlock* __continue__;
+    llvm::BasicBlock* __break__;
+};
+
 // static std::unique_ptr<llvm::LLVMContext> TheContext;
 static std::unique_ptr<llvm::Module> TheModule;
 // static std::unique_ptr<llvm::IRBuilder<>> Builder;
 static std::map<std::string, LocalSymbol> NamedValues;
 static std::map<std::string, GlobalSymbol> GlobalValues;
 static std::map<std::string, llvm::BasicBlock*> LabelTable;
+static std::map<std::string, LoopInfo> LoopTable = {{".active", {nullptr, nullptr}}};
 static std::map<std::string, TaskTypeInfo> TaskTable;
 static std::map<std::string, bool> PolymorphTable;
 
@@ -59,6 +65,7 @@ class BaseAST {
         virtual llvm::Value *requireLValue() { babel_panic("No lvalue available for this AST node"); }
         virtual BabelType getType() const { babel_panic("getType() not supported for this AST node"); }
         virtual bool isComptimeAssignable() const { babel_panic("isComptimeAssignable() not supported for this AST node"); }
+        virtual bool isStatementLike() const { return false; };
 };
 
 // class for referencing variables
@@ -314,6 +321,7 @@ class BinaryOperatorAST : public BaseAST {
         llvm::Constant* codegenComptime() override { assert(isComptimeAssignable()); return llvm::cast<llvm::Constant>(codegen()); }
         BabelType getType() const override;
         bool isComptimeAssignable() const override { return LHS->isComptimeAssignable() && RHS->isComptimeAssignable(); }
+        bool isStatementLike() const override { return Op == "=" || Op == ":="; }
 };
 
 class UnaryOperatorAST : public BaseAST {
@@ -326,6 +334,23 @@ class UnaryOperatorAST : public BaseAST {
         llvm::Constant* codegenComptime() override { assert(isComptimeAssignable()); return llvm::cast<llvm::Constant>(codegen()); }
         BabelType getType() const override { return Val->getType(); }
         bool isComptimeAssignable() const override { return Val->isComptimeAssignable(); }
+        bool isStatementLike() const override { return Op.ends_with("++") || Op.ends_with("--"); }
+};
+
+class ContinueStmtAST : public BaseAST {
+    std::optional<std::string> Target;
+
+    public:
+        explicit ContinueStmtAST(std::optional<std::string> Target) : Target(Target) {}
+        llvm::Value *codegen() override;
+};
+
+class BreakStmtAST : public BaseAST {
+    std::optional<std::string> Target;
+
+    public:
+        explicit BreakStmtAST(std::optional<std::string> Target) : Target(Target) {}
+        llvm::Value *codegen() override;
 };
 
 class ReturnStmtAST : public BaseAST {
@@ -349,6 +374,7 @@ class LabelStmtAST : public BaseAST {
 
     public:
         explicit LabelStmtAST(const std::string& Name) : Name(Name) {}
+        const std::string &getName() const { return Name; }
         llvm::Value *codegen() override;
 };
 
@@ -358,6 +384,7 @@ class BlockAST : public BaseAST {
     public:
         explicit BlockAST(std::deque<std::unique_ptr<BaseAST>> Statements) : Statements(std::move(Statements)) {}
         llvm::Value *codegen() override;
+        bool isStatementLike() const override { return Statements.empty(); }
 };
 
 class IfStmtAST : public BaseAST {
@@ -370,6 +397,39 @@ class IfStmtAST : public BaseAST {
         llvm::Value *codegen() override;
 };
 
+class WhileLoopAST : public BaseAST {
+    std::optional<std::string> Label;
+    std::unique_ptr<BaseAST> Cond;
+    std::unique_ptr<BaseAST> Body;
+
+    public:
+        WhileLoopAST(std::optional<std::string> Label, std::unique_ptr<BaseAST> Cond, std::unique_ptr<BaseAST> Body) : Label(Label), Cond(std::move(Cond)), Body(std::move(Body)) {}
+        llvm::Value *codegen() override;
+};
+
+class ForLoopAST : public BaseAST {
+    std::optional<std::string> Label;
+    std::unique_ptr<BaseAST> Init;
+    std::unique_ptr<BaseAST> Cond;
+    std::unique_ptr<BaseAST> Update;
+    std::unique_ptr<BaseAST> Body;
+
+    public:
+        ForLoopAST(std::optional<std::string> Label, std::unique_ptr<BaseAST> Init, std::unique_ptr<BaseAST> Cond, std::unique_ptr<BaseAST> Update, std::unique_ptr<BaseAST> Body) : Label(Label), Init(std::move(Init)), Cond(std::move(Cond)), Update(std::move(Update)), Body(std::move(Body)) {}
+        llvm::Value *codegen() override;
+};
+
+class ForInLoopAST : public BaseAST {
+    std::optional<std::string> Label;
+    std::unique_ptr<BaseAST> Elmnt;
+    std::unique_ptr<BaseAST> Collection;
+    std::unique_ptr<BaseAST> Body;
+
+    public:
+        ForInLoopAST(std::optional<std::string> Label, std::unique_ptr<BaseAST> Elmnt, std::unique_ptr<BaseAST> Collection, std::unique_ptr<BaseAST> Body) : Label(Label), Elmnt(std::move(Elmnt)), Collection(std::move(Collection)), Body(std::move(Body)) {}
+        llvm::Value *codegen() override;
+};
+
 class MacroCallAST : public BaseAST {
     std::string name;
     std::deque<std::variant<std::unique_ptr<BaseAST>, BabelType>> Args;
@@ -377,8 +437,9 @@ class MacroCallAST : public BaseAST {
     public:
         MacroCallAST(const std::string& name, std::deque<std::variant<std::unique_ptr<BaseAST>, BabelType>> Args) : name(name), Args(std::move(Args)) {}
         BabelType getType() const override;
-        bool isComptimeAssignable() const override { return true; }
         llvm::Value *codegen() override;
+        bool isComptimeAssignable() const override { return true; }
+        bool isStatementLike() const override { return true; }
 };
 
 // class for when a function is called
@@ -389,8 +450,9 @@ class TaskCallAST : public BaseAST {
     public:
         TaskCallAST(const std::string &callsTo, std::deque<std::unique_ptr<BaseAST>> Args) : callsTo(callsTo), Args(std::move(Args)) {}
         BabelType getType() const override;
-        bool isComptimeAssignable() const override { return false; } /* true if it's comptime, but that doesn't exist yet */
         llvm::Value *codegen() override;
+        bool isComptimeAssignable() const override { return false; } /* true if it's comptime, but that doesn't exist yet */
+        bool isStatementLike() const override { return true; }
 };
 
 // class for the function header (definition)
@@ -510,12 +572,12 @@ void StoreOrMemCpy(BaseAST* src, BabelType srcType, llvm::Value* dest, BabelType
     }
 }
 
-llvm::Value *handleAssignment(BaseAST* RHS, BabelType RHSType, BabelType VarType, const std::string& VarName, const bool isConst, const bool isDeclaration, const bool isComptime) {
+llvm::Value *handleAssignment(BaseAST* RHS, BabelType RHSType, BabelType VarType, const std::string& VarName, const bool isConst, const bool isDeclaration, const bool isComptime, const bool isShortDecl) {
     if (GLOBAL_SCOPE) {
         // we are in global scope
 
         if (GlobalValues.contains(VarName) && GlobalValues.at(VarName).val != nullptr) {
-            if (isDeclaration) {
+            if (isDeclaration && !isShortDecl) {
                 babel_panic("Redefinition of global variable '%s'", VarName.c_str());
             }
 
@@ -528,7 +590,7 @@ llvm::Value *handleAssignment(BaseAST* RHS, BabelType RHSType, BabelType VarType
             return existing.val;
         }
 
-        if (!isDeclaration) {
+        if (!isDeclaration && !isShortDecl) {
             babel_panic("Variable '%s' used before declaration", VarName.c_str());
         }
 
@@ -558,7 +620,7 @@ llvm::Value *handleAssignment(BaseAST* RHS, BabelType RHSType, BabelType VarType
 
         if (!Var.val) {
             if (GlobalValues.contains(VarName) && GlobalValues.at(VarName).val != nullptr) {
-                if (isDeclaration) {
+                if (isDeclaration && !isShortDecl) {
                     babel_panic("Redefinition of global variable '%s'", VarName.c_str());
                 }
     
@@ -571,7 +633,7 @@ llvm::Value *handleAssignment(BaseAST* RHS, BabelType RHSType, BabelType VarType
                 return existing.val;
             }
 
-            if (!isDeclaration) {
+            if (!isDeclaration && !isShortDecl) {
                 babel_panic("Variable '%s' was never declared", VarName.c_str());
             }
 
@@ -668,9 +730,9 @@ llvm::Constant *VariableAST::codegenComptime() {
 }
 
 llvm::Value *BinaryOperatorAST::codegen() {
-    if (Op == "=") {        
+    if (Op == "=" || Op == ":=") {
         if (const auto *Var = dynamic_cast<VariableAST*>(LHS.get())) {
-            return handleAssignment(RHS.get(), RHS->getType(), Var->getType(), Var->getName(), Var->getConstness(), Var->getDecl(), Var->hasComptimeVal());
+            return handleAssignment(RHS.get(), RHS->getType(), Var->getType(), Var->getName(), Var->getConstness(), Var->getDecl(), Var->hasComptimeVal(), Op == ":=");
         } else if (auto *Arr = dynamic_cast<AccessElementOperatorAST*>(LHS.get())) {
             llvm::Value *LHSVal = Arr->requireLValue();
             return Builder->CreateStore(RHS->codegen(), LHSVal);
@@ -715,10 +777,14 @@ llvm::Value *BinaryOperatorAST::codegen() {
         return Builder->CreateShl(left, right, "lshtmp");
     } else if (Op == ">>") {
         return Builder->CreateLShr(left, right, "rshtmp");
-    } else if (Op == "|" || Op == "||") {
+    } else if (Op == "|") {
         return Builder->CreateOr(left, right, "ortmp");
-    } else if (Op == "&" || Op == "&&") {
+    } else if (Op == "||") {
+        return Builder->CreateLogicalOr(left, right, "lortmp");
+    } else if (Op == "&") {
         return Builder->CreateAnd(left, right, "andtmp");
+    } else if (Op == "&&") {
+        return Builder->CreateLogicalAnd(left, right, "landtmp");
     } else if (Op == "^" || Op == "^^") {
         return Builder->CreateXor(left, right, "xortmp");
     } else if (Op == "==") {
@@ -748,6 +814,22 @@ llvm::Value *UnaryOperatorAST::codegen() {
         return Builder->CreateNeg(operand, "negtmp");
     } else if (Op == "+") {
         return operand; // unary plus is a no-op
+    } else  if (Op == "pre++") {
+        llvm::Value* inc = Builder->CreateAdd(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "inc");
+        Builder->CreateStore(inc, Val->requireLValue());
+        return inc;
+    } else  if (Op == "pre--") {
+        llvm::Value* dec = Builder->CreateSub(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "dec");
+        Builder->CreateStore(dec, Val->requireLValue());
+        return dec;
+    } else if (Op == "post++") {
+        llvm::Value* inc = Builder->CreateAdd(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "inc");
+        Builder->CreateStore(inc, Val->requireLValue());
+        return operand;
+    } else if (Op == "post--") {
+        llvm::Value* dec = Builder->CreateSub(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "dec");
+        Builder->CreateStore(dec, Val->requireLValue());
+        return operand;
     } else {
         babel_panic("Invalid unary operator");
     }
@@ -791,6 +873,38 @@ llvm::Value *DereferenceOperatorAST::codegen() {
 
 llvm::Value *AddressOfOperatorAST::codegen() {
     return Var->requireLValue();
+}
+
+llvm::Value *ContinueStmtAST::codegen() {
+    if (Target.has_value()) {
+        if (!LoopTable.contains(Target.value()))
+            babel_panic("undefined loop label");
+
+        Builder->CreateBr(LoopTable.at(Target.value()).__continue__);
+    } else {
+        if (LoopTable.at(".active").__continue__ == nullptr)
+            babel_panic("continue statement outside of loop not allowed");
+        
+        Builder->CreateBr(LoopTable.at(".active").__continue__);
+    }
+
+    return nullptr;
+}
+
+llvm::Value *BreakStmtAST::codegen() {
+    if (Target.has_value()) {
+        if (!LoopTable.contains(Target.value()))
+            babel_panic("undefined loop label");
+
+        Builder->CreateBr(LoopTable.at(Target.value()).__break__);
+    } else {
+        if (LoopTable.at(".active").__continue__ == nullptr)
+            babel_panic("break statement outside of loop not allowed");
+        
+        Builder->CreateBr(LoopTable.at(".active").__break__);
+    }
+
+    return nullptr;
 }
 
 llvm::Value *ReturnStmtAST::codegen() {
@@ -899,6 +1013,171 @@ llvm::Value *IfStmtAST::codegen() {
     Builder->SetInsertPoint(MergeBB);
 
     return nullptr; //llvm::Constant::getNullValue(llvm::Type::getVoidTy(*TheContext));
+}
+
+llvm::Value *WhileLoopAST::codegen() {
+    llvm::Function *TheFunction = Builder->GetInsertBlock()->getParent();
+    llvm::BasicBlock *CondBB = llvm::BasicBlock::Create(*TheContext, "for.cond", TheFunction);
+    llvm::BasicBlock *BodyBB = llvm::BasicBlock::Create(*TheContext, "for.body");
+    llvm::BasicBlock *EndBB = llvm::BasicBlock::Create(*TheContext, "for.end");
+
+    LoopInfo previous = LoopTable.at(".active");
+    LoopTable[".active"] = {CondBB, EndBB};
+
+    if (Label.has_value()) {
+        if (LoopTable.contains(Label.value()))
+            babel_panic("loop label already exists in outer loop");
+
+        LoopTable[Label.value()] = {CondBB, EndBB};
+    }
+
+    Builder->CreateBr(CondBB);
+    Builder->SetInsertPoint(CondBB);
+
+    llvm::Value* CondV = Cond->codegen();
+
+    if (!CondV->getType()->isIntegerTy(1))
+        babel_panic("loop condition doesn't meet requirement: Boolean Type");
+
+    Builder->CreateCondBr(CondV, BodyBB, EndBB);
+
+    TheFunction->insert(TheFunction->end(), BodyBB);
+    Builder->SetInsertPoint(BodyBB);
+    Body->codegen();
+    Builder->CreateBr(CondBB);
+
+    TheFunction->insert(TheFunction->end(), EndBB);
+    Builder->SetInsertPoint(EndBB);
+
+    LoopTable[".active"] = previous;
+    if (Label.has_value())
+        LoopTable.erase(Label.value());
+
+    return nullptr;
+}
+
+llvm::Value *ForLoopAST::codegen() {
+    llvm::Function *TheFunction = Builder->GetInsertBlock()->getParent();
+    llvm::BasicBlock *CondBB = llvm::BasicBlock::Create(*TheContext, "for.cond", TheFunction);
+    llvm::BasicBlock *BodyBB = llvm::BasicBlock::Create(*TheContext, "for.body");
+    llvm::BasicBlock *UpdateBB = llvm::BasicBlock::Create(*TheContext, "for.inc");
+    llvm::BasicBlock *EndBB = llvm::BasicBlock::Create(*TheContext, "for.end");
+
+    LoopInfo previous = LoopTable.at(".active");
+    LoopTable[".active"] = {UpdateBB, EndBB};
+
+    if (Label.has_value()) {
+        if (LoopTable.contains(Label.value()))
+            babel_panic("loop label already exists in outer loop");
+
+        LoopTable[Label.value()] = {UpdateBB, EndBB};
+    }
+
+    Init->codegen();
+    Builder->CreateBr(CondBB);
+    Builder->SetInsertPoint(CondBB);
+
+    llvm::Value* CondV = Cond->codegen();
+
+    if (!CondV->getType()->isIntegerTy(1))
+        babel_panic("loop condition doesn't meet requirement: Boolean Type");
+
+    Builder->CreateCondBr(CondV, BodyBB, EndBB);
+
+    TheFunction->insert(TheFunction->end(), BodyBB);
+    Builder->SetInsertPoint(BodyBB);
+    Body->codegen();
+    Builder->CreateBr(UpdateBB);
+
+    TheFunction->insert(TheFunction->end(), UpdateBB);
+    Builder->SetInsertPoint(UpdateBB);
+    Update->codegen();
+    Builder->CreateBr(CondBB);
+
+    TheFunction->insert(TheFunction->end(), EndBB);
+    Builder->SetInsertPoint(EndBB);
+
+    LoopTable[".active"] = previous;
+    if (Label.has_value())
+        LoopTable.erase(Label.value());
+
+    return nullptr;
+}
+
+llvm::Value *ForInLoopAST::codegen() {
+    llvm::Function *TheFunction = Builder->GetInsertBlock()->getParent();
+    llvm::BasicBlock *CondBB = llvm::BasicBlock::Create(*TheContext, "for.cond", TheFunction);
+    llvm::BasicBlock *BodyBB = llvm::BasicBlock::Create(*TheContext, "for.body");
+    llvm::BasicBlock *UpdateBB = llvm::BasicBlock::Create(*TheContext, "for.inc");
+    llvm::BasicBlock *EndBB = llvm::BasicBlock::Create(*TheContext, "for.end");
+
+    LoopInfo previous = LoopTable.at(".active");
+    LoopTable[".active"] = {UpdateBB, EndBB};
+
+    if (Label.has_value()) {
+        if (LoopTable.contains(Label.value()))
+            babel_panic("loop label already exists in outer loop");
+
+        LoopTable[Label.value()] = {UpdateBB, EndBB};
+    }
+
+    if (!Collection->getType().isArray())
+        babel_panic("for in loop must use iterable collection");
+    
+    // alternatively an iterator type
+    llvm::AllocaInst* it = Builder->CreateAlloca(llvm::PointerType::getUnqual(*TheContext), nullptr, "it");
+    llvm::AllocaInst* end = Builder->CreateAlloca(llvm::PointerType::getUnqual(*TheContext), nullptr, "end");
+
+    llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
+    llvm::Value* length = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), Collection->getType().getArray().size);
+
+    // alternatively call Iterable.begin()
+    llvm::Value* front = Builder->CreateInBoundsGEP(resolveLLVMType(Collection->getType()), Collection->requireLValue(), {zero, zero});
+    Builder->CreateStore(front, it);
+
+    // alternatively call Iterable.end()
+    llvm::Value* back = Builder->CreateInBoundsGEP(resolveLLVMType(Collection->getType()), Collection->requireLValue(), {zero, length});
+    Builder->CreateStore(back, end);
+
+    Builder->CreateBr(CondBB);
+    Builder->SetInsertPoint(CondBB);
+
+    // alternatively Iterator.__operator_compare(it, end) != 0
+    llvm::Value *comp = Builder->CreateICmpNE(Builder->CreateLoad(llvm::PointerType::getUnqual(*TheContext), it), Builder->CreateLoad(llvm::PointerType::getUnqual(*TheContext), end), "cmp");
+
+    Builder->CreateCondBr(comp, BodyBB, EndBB);
+
+    TheFunction->insert(TheFunction->end(), BodyBB);
+    Builder->SetInsertPoint(BodyBB);
+
+    const auto *Var = dynamic_cast<VariableAST*>(Elmnt.get());
+    llvm::AllocaInst* a = Builder->CreateAlloca(resolveLLVMType(*Collection->getType().getArray().inner), nullptr, Var->getName());
+    NamedValues[Var->getName()] = {a, *Collection->getType().getArray().inner, false};
+    // manual dereference, alternatively call Iterator.current()
+    Builder->CreateStore(Builder->CreateLoad(resolveLLVMType(*Collection->getType().getArray().inner), Builder->CreateLoad(llvm::PointerType::getUnqual(*TheContext), it)), a);
+    Body->codegen();
+    
+    Builder->CreateBr(UpdateBB);
+
+    TheFunction->insert(TheFunction->end(), UpdateBB);
+    Builder->SetInsertPoint(UpdateBB);
+
+    // alternatively call Iterator.advance()
+    llvm::Value* it1 = Builder->CreateLoad(llvm::PointerType::getUnqual(*TheContext), it);
+    llvm::Value* one = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1);
+    llvm::Value* incDec = Builder->CreateInBoundsGEP(llvm::Type::getInt32Ty(*TheContext), it1, {one}, "incdec");
+    Builder->CreateStore(incDec, it);
+    
+    Builder->CreateBr(CondBB);
+
+    TheFunction->insert(TheFunction->end(), EndBB);
+    Builder->SetInsertPoint(EndBB);
+
+    LoopTable[".active"] = previous;
+    if (Label.has_value())
+        LoopTable.erase(Label.value());
+
+    return nullptr;
 }
 
 BabelType MacroCallAST::getType() const {

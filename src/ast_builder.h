@@ -116,12 +116,19 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         
         //std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
         //fprintf(stderr, "\n");
-    } else if (type == "primary") {
-        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "RPAREN") {
-            nodeStack.pop();
-            node = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
-            nodeStack.pop(); //LPAREN
-        } else if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "RSQUARE") {
+    } else if (type == "inversion" || type == "prefix") {
+        std::unique_ptr<BaseAST> operand = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+        TreeNode op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
+
+        std::string s = (op.name == "INCREMENT" || op.name == "DECREMENT") ? "pre" : "";
+
+        if (op.data.value() == "&") {
+            node = std::make_unique<AddressOfOperatorAST>(std::move(operand));
+        } else {
+            node = std::make_unique<UnaryOperatorAST>(s + op.data.value(), std::move(operand));
+        }
+    } else if (type == "postfix") {
+        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "RSQUARE") {
             nodeStack.pop();
             std::unique_ptr<BaseAST> index = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
             nodeStack.pop(); // LSQUARE
@@ -132,25 +139,17 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
             nodeStack.pop();
             node = std::make_unique<DereferenceOperatorAST>(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top()))); nodeStack.pop();
         } else {
-            node = std::make_unique<AddressOfOperatorAST>(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top()))); nodeStack.pop();
-            nodeStack.pop(); // ampersand
+            TreeNode op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
+            std::unique_ptr<BaseAST> operand = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+
+            node = std::make_unique<UnaryOperatorAST>("post" + op.data.value(), std::move(operand));
         }
-    } else if (type == "inversion" || type == "factor") {
-        std::unique_ptr<BaseAST> operand;
-        TreeNode op;
-
-        if (!std::holds_alternative<TreeNode>(nodeStack.top())) {
-            operand = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
-            op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
-        } else {
-            op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
-            operand = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+    } else if (type == "primary") {
+        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "RPAREN") {
+            nodeStack.pop();
+            node = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+            nodeStack.pop(); //LPAREN
         }
-
-        node = std::make_unique<UnaryOperatorAST>(op.data.value(), std::move(operand));
-
-        std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
-        fprintf(stderr, "\n");
     } else if (type == "assignment") {
         std::unique_ptr<BaseAST> rhs = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
         TreeNode op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
@@ -180,9 +179,12 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
             if (!varType.has_value()) varType = rhs->getType();
             node = std::make_unique<BinaryOperatorAST>(subop, std::make_unique<VariableAST>(var.data.value(), varType, isConstant, isDeclaration, rhs->isComptimeAssignable()), std::move(rhs));
         }
-        
-        //std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
-        //fprintf(stderr, "\n");
+    } else if (type == "short_declaration") {
+        std::unique_ptr<BaseAST> rhs = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+        nodeStack.pop(); // COLON_EQUALS
+        TreeNode var = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
+
+        node = std::make_unique<BinaryOperatorAST>(":=", std::make_unique<VariableAST>(var.data.value(), rhs->getType(), false, true, rhs->isComptimeAssignable()), std::move(rhs));        
     } else if (type == "element_assignment") {
         std::unique_ptr<BaseAST> rhs = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
         TreeNode op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
@@ -295,6 +297,97 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
             fprintf(stderr, "\n");
     } else if (type == "elif_stmt" || type == "task_header" || type == "args" || type == "params" || type == "generic_list" || type == "type" || type == "type_spec" || type == "type_signature") {
         return; // handled by it's corresponding statement
+    } else if (type == "while_loop") {
+        nodeStack.pop(); // END
+
+        std::deque<std::unique_ptr<BaseAST>> statements;
+        while (!std::holds_alternative<TreeNode>(nodeStack.top())) {
+            statements.push_front(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())));
+            nodeStack.pop();
+        }
+        std::unique_ptr<BaseAST> block = std::make_unique<BlockAST>(std::move(statements));
+
+        nodeStack.pop(); // DO
+        std::unique_ptr<BaseAST> cond = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+        nodeStack.pop(); // WHILE
+
+        std::optional<std::string> label = std::nullopt;
+        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "COLON") {
+            nodeStack.pop(); // COLON
+            label = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
+            nodeStack.pop(); // LABEL_START
+        }
+
+        node = std::make_unique<WhileLoopAST>(label, std::move(cond), std::move(block));
+    } else if (type == "for_loop") {
+        nodeStack.pop(); // END
+
+        std::deque<std::unique_ptr<BaseAST>> statements;
+        while (!std::holds_alternative<TreeNode>(nodeStack.top())) {
+            statements.push_front(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())));
+            nodeStack.pop();
+        }
+        std::unique_ptr<BaseAST> block = std::make_unique<BlockAST>(std::move(statements));
+
+        nodeStack.pop(); // DO
+
+        std::unique_ptr<BaseAST> inc = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+        nodeStack.pop(); // SEMICOLON
+        std::unique_ptr<BaseAST> cond = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+        nodeStack.pop(); // SEMICOLON
+        std::unique_ptr<BaseAST> init = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+
+        nodeStack.pop(); // FOR
+
+        std::optional<std::string> label = std::nullopt;
+        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "COLON") {
+            nodeStack.pop(); // COLON
+            label = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
+            nodeStack.pop(); // LABEL_START
+        }
+
+        node = std::make_unique<ForLoopAST>(label, std::move(init), std::move(cond), std::move(inc), std::move(block));
+    } else if (type == "for_in_loop") {
+        nodeStack.pop(); // END
+
+        std::deque<std::unique_ptr<BaseAST>> statements;
+        while (!std::holds_alternative<TreeNode>(nodeStack.top())) {
+            statements.push_front(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())));
+            nodeStack.pop();
+        }
+        std::unique_ptr<BaseAST> block = std::make_unique<BlockAST>(std::move(statements));
+
+        nodeStack.pop(); // DO
+
+        std::unique_ptr<BaseAST> collection = std::make_unique<VariableAST>(std::get<TreeNode>(nodeStack.top()).data.value(), std::nullopt, false, false, false); nodeStack.pop();
+        nodeStack.pop(); // IN
+        std::unique_ptr<BaseAST> elmntName = std::make_unique<VariableAST>(std::get<TreeNode>(nodeStack.top()).data.value(), std::nullopt, false, false, false); nodeStack.pop();
+        nodeStack.pop(); // FOR
+
+        std::optional<std::string> label = std::nullopt;
+        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "COLON") {
+            nodeStack.pop(); // COLON
+            label = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
+            nodeStack.pop(); // LABEL_START          
+        }
+
+        node = std::make_unique<ForInLoopAST>(label, std::move(elmntName), std::move(collection), std::move(block));
+    } else if (type == "continue_stmt") {
+        std::optional<std::string> label = std::nullopt;
+        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "VAR") {
+            label = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
+        }
+
+        nodeStack.pop(); // CONTINUE
+        node = std::make_unique<ContinueStmtAST>(label);
+    } else if (type == "break_stmt") {
+        std::optional<std::string> label = std::nullopt;
+        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "VAR") {
+            label = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
+        }
+
+        nodeStack.pop(); // BREAK
+        node = std::make_unique<BreakStmtAST>(label);
     } else if (type == "return_stmt") {
         // assuming not multiple return values
         if (!std::holds_alternative<TreeNode>(nodeStack.top())) {
@@ -444,6 +537,15 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
             node = std::make_unique<ArrayAST>(std::move(Args));
         } else {
             babel_stub();
+        }
+    } else if (type == "simple_stmt") {
+        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "NOOP") {
+            nodeStack.pop(); // NOOP
+            node = std::make_unique<BlockAST>(std::deque<std::unique_ptr<BaseAST>>{});
+        } else {
+            node = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+            if (!std::get<std::unique_ptr<BaseAST>>(node)->isStatementLike())
+                babel_panic("expression has no effect as a statement");
         }
     } else if (type == "terminator") {
         nodeStack.pop();

@@ -1,2 +1,2 @@
-extern task printf(cstr) => void
+extern task printf(cstr, ...) => void
 printf(c"Hello World")
