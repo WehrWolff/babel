@@ -164,25 +164,36 @@ catch_blocks        : CATCH VAR block
 
 expression          : disjunction
 
-disjunction         : contravalence
-                    | contravalence OR disjunction
+disjunction         : contravalence or_chain
+                    | contravalence
+
+or_chain            : OR contravalence or_chain
+                    | OR contravalence
 
 contravalence       : conjunction
                     | conjunction XOR contravalence
 
-conjunction         : inversion
-                    | inversion AND conjunction
+conjunction         : inversion and_chain
+                    | inversion
+
+and_chain           : AND inversion and_chain
+                    | AND inversion
 
 inversion           : NOT inversion
                     | comparison
 
-comparison          : comparison EQEQ bitwise_or
-                    | comparison NOTEQ bitwise_or
-                    | comparison LTEQ bitwise_or
-                    | comparison GTEQ bitwise_or
-                    | comparison LT bitwise_or
-                    | comparison GT bitwise_or
+comparison          : bitwise_or cmp_chain
                     | bitwise_or
+
+cmp_chain           : cmp_op bitwise_or cmp_chain
+                    | cmp_op bitwise_or
+
+cmp_op              : EQEQ
+                    | NOTEQ
+                    | LTEQ
+                    | GTEQ
+                    | LT
+                    | GT
 
 bitwise_or          : bitwise_or BIT_OR bitwise_xor
                     | bitwise_xor

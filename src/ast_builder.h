@@ -107,7 +107,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
 
         //std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
         //fprintf(stderr, "\n");
-    } else if (type == "sum" || type == "term" || type == "shift_expression" || type == "bitwise_and" || type == "bitwise_or" || type == "bitwise_xor" || type == "comparison" || type == "conjunction" || type == "disjunction" || type == "contravalence") {
+    } else if (type == "sum" || type == "term" || type == "shift_expression" || type == "bitwise_and" || type == "bitwise_or" || type == "bitwise_xor" || type == "contravalence") {
         std::unique_ptr<BaseAST> rhs = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
         TreeNode op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
         std::unique_ptr<BaseAST> lhs = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
@@ -116,6 +116,30 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         
         //std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
         //fprintf(stderr, "\n");
+    } else if (type == "comparison" || type == "conjunction" || type == "disjunction") {
+        node = std::move(nodeStack.top()); nodeStack.pop();
+        
+        std::deque<std::string> ops = {};
+        std::deque<std::unique_ptr<BaseAST>> vals = {};
+
+        auto isComp = [&nodeStack, &type]() { return std::get<TreeNode>(nodeStack.top()).name == "cmp_op" && type == "comparison"; };
+        auto isAnd = [&nodeStack, &type]() { return std::get<TreeNode>(nodeStack.top()).name == "AND" && type == "conjunction"; };
+        auto isOr = [&nodeStack, &type]() { return std::get<TreeNode>(nodeStack.top()).name == "OR" && type == "disjunction"; };
+
+        while (std::holds_alternative<TreeNode>(nodeStack.top()) && (isComp() || isAnd() || isOr())) {
+            std::string op = std::get<TreeNode>(nodeStack.top()).name == "cmp_op"
+                ? std::get<TreeNode>(nodeStack.top()).children.front().data.value()
+                : std::get<TreeNode>(nodeStack.top()).data.value();
+
+            ops.push_front(op);
+            nodeStack.pop(); // operator
+            vals.push_front(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top()))); nodeStack.pop();
+        }
+
+        if (!ops.empty()) {
+            vals.push_back(std::move(std::get<std::unique_ptr<BaseAST>>(node)));
+            node = std::make_unique<ComparisonChainAST>(std::move(ops), std::move(vals));
+        }
     } else if (type == "inversion" || type == "prefix") {
         std::unique_ptr<BaseAST> operand = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
         TreeNode op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
@@ -295,7 +319,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         done:
             //std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
             fprintf(stderr, "\n");
-    } else if (type == "elif_stmt" || type == "task_header" || type == "args" || type == "params" || type == "generic_list" || type == "type" || type == "type_spec" || type == "type_signature") {
+    } else if (type == "elif_stmt" || type == "task_header" || type == "args" || type == "params" || type == "generic_list" || type == "type" || type == "type_spec" || type == "type_signature" || type == "and_chain" || type == "or_chain") {
         return; // handled by it's corresponding statement
     } else if (type == "while_loop") {
         nodeStack.pop(); // END

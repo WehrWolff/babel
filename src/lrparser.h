@@ -667,7 +667,8 @@ public:
 
                 nodeStack.push(newNode);
 
-                if (newNode.has_tokenized_child() || rule.nonterminal == "simple_stmt" || isElement(EPSILON, rule.development)) {
+                bool treatSpecial = rule.nonterminal == "simple_stmt" || rule.nonterminal == "comparison" || rule.nonterminal == "conjunction" || rule.nonterminal == "disjunction";
+                if (newNode.has_tokenized_child() || treatSpecial || isElement(EPSILON, rule.development)) {
                     buildNode(reducedNodes, rule.nonterminal, removeCount);
                 }
             } else {

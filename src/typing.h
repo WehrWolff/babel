@@ -288,6 +288,13 @@ bool isBabelFloat(BabelType type) {
     }
 }
 
+bool areComparablePointers(PointerType lhs, PointerType rhs) {
+    if (lhs.to->isPointer() && rhs.to->isPointer())
+        return areComparablePointers(lhs.to->getPointer(), rhs.to->getPointer());
+    
+    return false;
+}
+
 bool canImplicitCast(BabelType from, BabelType to) {
     if (from == to)
         return true;

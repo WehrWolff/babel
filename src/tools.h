@@ -161,6 +161,57 @@ std::vector<typename Container::value_type> slice(const Container& in, int start
     return result;
 }
 
+// zip iterator for tow ranges
+// ! not able to mutate
+template <std::ranges::range R1, std::ranges::range R2>
+class Zipped {
+public:
+    Zipped(R1 r1, R2 r2) : r1_(std::move(r1)), r2_(std::move(r2)) {}
+
+    class Iterator {
+    public:
+        using It1 = std::ranges::iterator_t<R1>;
+        using It2 = std::ranges::iterator_t<R2>;
+
+        Iterator(It1 it1, It2 it2) : it1_(it1), it2_(it2) {}
+
+        bool operator!=(const Iterator& other) const {
+            return it1_ != other.it1_ && it2_ != other.it2_; // stop when either hits end
+        }
+
+        void operator++() {
+            ++it1_;
+            ++it2_;
+        }
+
+        std::tuple<decltype(*std::declval<It1>()), decltype(*std::declval<It2>())> operator*() const {
+            return std::tie(*it1_, *it2_);
+        }
+
+    private:
+        It1 it1_;
+        It2 it2_;
+    };
+
+    Zipped<R1, R2>::Iterator begin() {
+        return Iterator{
+            std::ranges::begin(r1_),
+            std::ranges::begin(r2_)
+        };
+    }
+
+    Zipped<R1, R2>::Iterator end() {
+        return Iterator{
+            std::ranges::end(r1_),
+            std::ranges::end(r2_)
+        };
+    }
+
+private:
+    R1 r1_;
+    R2 r2_;
+};
+
 std::string unescapeString(const std::string& oldstr) {
     std::ostringstream newstr;
     bool saw_backslash = false;
@@ -276,6 +327,232 @@ BabelType fpTypeFromSuffix(char suffix) {
         case 'Q': case 'q': return BabelType::Float128();
         default:            return BabelType::Float32();
     }
+}
+
+// to be added: uint, overloads, optionals
+enum class OpKind {
+    AddInt,
+    AddFloat,
+    AddPtr,
+    SubInt,
+    SubFloat,
+    SubPtr,
+    PtrDiff,
+    MulInt,
+    MulFloat,
+    MulBool,
+    Div,
+    IDiv,
+    RemInt,
+    RemFloat,
+    PowerInt,
+    PowerFloat,
+    PowerFloatInt,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+    LShr,
+    EqInt,
+    EqFloat,
+    NeInt, 
+    NeFloat,
+    LtInt,
+    LtFloat,
+    LeInt,
+    LeFloat,
+    GtInt,
+    GtFloat,
+    GeInt,
+    GeFloat,
+    LogicalAnd,
+    LogicalOr,
+    Not,
+    Neg,
+    FNeg,
+    Id,
+    PreInc,
+    PostInc,
+    PreDec,
+    PostDec,
+    PrePtrInc,
+    PostPtrInc,
+    PrePtrDec,
+    PostPtrDec
+};
+
+OpKind getOperation(std::string_view op, BabelType left, BabelType right) {
+    bool isFloatCompatible = (isBabelFloat(left) && isBabelFloat(right)) || (isBabelFloat(left) && isBabelInteger(right)) || (isBabelInteger(left) && isBabelFloat(right));
+    bool isPointerArithmetic = (left.isPointer() && isBabelInteger(right)) || (isBabelInteger(left) && right.isPointer());
+
+    if (op == "+") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::AddInt;
+        
+        if (isFloatCompatible)
+            return OpKind::AddFloat;
+        
+        if (isPointerArithmetic)
+            return OpKind::AddPtr;
+    } else if (op == "-") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::SubInt;
+        
+        if (isFloatCompatible)
+            return OpKind::SubFloat;
+
+        if (isPointerArithmetic)
+            return OpKind::SubPtr;
+        
+        if (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer()))
+            return OpKind::PtrDiff;
+    } else if (op == "*") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::MulInt;
+        
+        if (isFloatCompatible)
+            return OpKind::MulFloat;
+
+        if (left == BabelType::Boolean() ^ right == BabelType::Boolean())
+            return OpKind::MulBool;
+    } else if (op == "/") {
+        if ((isBabelInteger(left) && isBabelInteger(right)) || isFloatCompatible)
+            return OpKind::Div;
+    } else if (op == "//") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::IDiv;
+    } else if (op == "%") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::RemInt;
+        
+        if (isFloatCompatible)
+            return OpKind::RemFloat;
+    } else if (op == "<<") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::Shl;
+    } else if (op == ">>") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::Shr;
+    } else if (op == ">>>") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::LShr;
+    } else if (op == "|") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::BitOr;
+    } else if (op == "&") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::BitAnd;
+    } else if (op == "^" || op == "^^") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::BitXor;
+    } else if (op == "**") {
+        if (isBabelInteger(left) && isBabelInteger(right))
+            return OpKind::PowerInt;
+        
+        if (isBabelFloat(left) && isBabelInteger(right))
+            return OpKind::PowerFloatInt;
+        
+        if (isFloatCompatible)
+            return OpKind::PowerFloat;
+    } else if (op == "==") {
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+            return OpKind::EqInt;
+        
+        if (isFloatCompatible)
+            return OpKind::EqFloat;
+    } else if (op == "!=") {
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+            return OpKind::NeInt;
+        
+        if (isFloatCompatible)
+            return OpKind::NeFloat;
+    } else if (op == "<") {
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+            return OpKind::LtInt;
+        
+        if (isFloatCompatible)
+            return OpKind::LtFloat;
+    } else if (op == "<=") {
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+            return OpKind::LeInt;
+        
+        if (isFloatCompatible)
+            return OpKind::LeFloat;
+    } else if (op == ">") {
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+            return OpKind::GtInt;
+        
+        if (isFloatCompatible)
+            return OpKind::GtFloat;
+    } else if (op == ">=") {
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+            return OpKind::GeInt;
+        
+        if (isFloatCompatible)
+            return OpKind::GeFloat;
+    } else if (op == "&&") {
+        // in the future an optional type is fine as well
+        if (left == BabelType::Boolean() && right == BabelType::Boolean())
+            return OpKind::LogicalAnd;
+    } else if (op == "||") {
+        // in the future an optional type is fine as well
+        if (left == BabelType::Boolean() && right == BabelType::Boolean())
+            return OpKind::LogicalOr;
+    } else {
+        babel_panic("Invalid binary operator %s", op.data());
+    }
+
+    babel_panic("Invalid types (%s and %s) to binary operator %s", getBabelTypeName(left).c_str(), getBabelTypeName(right).c_str(), op.data());
+}
+
+OpKind getOperation(std::string_view op, BabelType ty) {
+    if (op == "!") {
+        // in the future an optional type is fine as well
+        if (ty == BabelType::Boolean())
+            return OpKind::Not;
+    } else if (op == "~") {
+        // same instruction as above
+        if (isBabelInteger(ty))
+            return OpKind::Not;
+    } else if (op == "-") {
+        if (isBabelInteger(ty))
+            return OpKind::Neg;
+
+        if (isBabelFloat(ty))
+            return OpKind::FNeg;
+    } else if (op == "+") {
+        if (isBabelInteger(ty) && isBabelFloat(ty))
+            return OpKind::Id;
+    } else if (op == "pre++") {
+        if (isBabelInteger(ty))
+            return OpKind::PreInc;
+        
+        if (ty.isPointer())
+            return OpKind::PrePtrInc;
+    } else if (op == "pre--") {
+        if (isBabelInteger(ty))
+            return OpKind::PreDec;
+        
+        if (ty.isPointer())
+            return OpKind::PrePtrDec;
+    } else if (op == "post++") {
+        if (isBabelInteger(ty))
+            return OpKind::PostInc;
+        
+        if (ty.isPointer())
+            return OpKind::PostPtrInc;
+    } else if (op == "post--") {
+        if (isBabelInteger(ty))
+            return OpKind::PostDec;
+        
+        if (ty.isPointer())
+            return OpKind::PostPtrDec;
+    } else {
+        babel_panic("Invalid unary operator %s", op.data());
+    }
+
+    babel_panic("Invalid type (%s) to unary operator %s", getBabelTypeName(ty).c_str(), op.data());
 }
 
 #endif /* TOOLS_HPP */

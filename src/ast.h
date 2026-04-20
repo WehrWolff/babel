@@ -16,6 +16,7 @@
 #include <iostream>
 #include <variant>
 #include <vector>
+#include <algorithm>
 
 #include "util.hpp"
 #include "typing.h"
@@ -39,6 +40,7 @@ struct LocalSymbol {
 struct TaskTypeInfo {
     std::deque<BabelType> args;
     BabelType ret;
+    bool isVarArg;
 };
 
 struct LoopInfo {
@@ -309,6 +311,19 @@ class AddressOfOperatorAST : public BaseAST {
         bool isComptimeAssignable() const override { return Var->isComptimeAssignable(); }
 };
 
+class ComparisonChainAST : public BaseAST {
+    const std::deque<std::string> Operators;
+    const std::deque<std::unique_ptr<BaseAST>> Operands;
+
+    public:
+        ComparisonChainAST(std::deque<std::string> Operators, std::deque<std::unique_ptr<BaseAST>> Operands) : Operators(std::move(Operators)), Operands(std::move(Operands)) {}
+        llvm::Value *codegen() override;
+        llvm::Constant *codegenComptime() override { assert(isComptimeAssignable()); return llvm::cast<llvm::Constant>(codegen()); }
+        BabelType getType() const override { return BabelType::Boolean(); }
+        bool isComptimeAssignable() const override { return std::ranges::all_of(Operands, [](const std::unique_ptr<BaseAST>& elmnt) { return elmnt->isComptimeAssignable(); }); }
+        bool isStatementLike() const override { return false; }
+};
+
 // class for when binary operators are used
 class BinaryOperatorAST : public BaseAST {
     const std::string Op;
@@ -532,17 +547,39 @@ BabelType VariableAST::getType() const {
 }
 
 BabelType BinaryOperatorAST::getType() const {
-    // this is a special case, since we cast to double
-    if (Op == "/") {
-        return BabelType::Float64();
-    }
+    BabelType lTy = LHS->getType();
+    BabelType rTy = RHS->getType();
 
-    if (canImplicitCast(LHS->getType(), RHS->getType()))
-        return RHS->getType();
-    else if (canImplicitCast(RHS->getType(), LHS->getType()))
-        return LHS->getType();
-    else
-        babel_panic("Cannot implicitly cast between %s and %s", getBabelTypeName(LHS->getType()).c_str(), getBabelTypeName(RHS->getType()).c_str());
+    using enum OpKind;
+    switch (getOperation(Op, lTy, rTy)) {
+        case AddPtr: case SubPtr:
+            return lTy.isPointer() ? lTy : rTy;
+        case PtrDiff:
+            return BabelType::Int(); // should be ptr sized int in the future
+        case MulBool:
+            return lTy != BabelType::Boolean() ? lTy : rTy;
+        case PowerInt:
+            return BabelType::Float64();
+        case Div: {
+            if (isBabelInteger(lTy) && isBabelInteger(rTy))
+                return BabelType::Float64();
+            
+            /* fallthrough */
+        }
+        case AddInt: case AddFloat: case SubInt: case SubFloat:
+        case MulInt: case MulFloat: case IDiv: case RemInt:
+        case RemFloat: case Shl: case Shr: case LShr:
+        case PowerFloatInt: case PowerFloat: case BitAnd: case BitXor:
+        case BitOr: {
+            if (canImplicitCast(lTy, rTy)) {
+                return rTy;
+            } else if (canImplicitCast(rTy, lTy)) {
+                return lTy;
+            }
+        }
+        default:
+            babel_unreachable();
+    }
 }
 
 BabelType TaskCallAST::getType() const  {
@@ -731,6 +768,169 @@ llvm::Constant *VariableAST::codegenComptime() {
     return GlobalValues.at(Name).comptimeInit;
 }
 
+llvm::Value *shortCircuit(const std::deque<std::unique_ptr<BaseAST>>& ops, bool continueCondition) {
+    llvm::Function *TheFunction = Builder->GetInsertBlock()->getParent();
+    llvm::BasicBlock *EndBB = llvm::BasicBlock::Create(*TheContext, "L", TheFunction);
+    std::vector<llvm::BasicBlock*> blocks = {Builder->GetInsertBlock()};
+
+    for (const auto& op : ops | std::views::take(ops.size() - 1)) {
+        llvm::BasicBlock *ContinueBB = llvm::BasicBlock::Create(*TheContext, "L", TheFunction, EndBB);
+        blocks.push_back(ContinueBB);
+
+        continueCondition ? Builder->CreateCondBr(op->codegen(), ContinueBB, EndBB) : Builder->CreateCondBr(op->codegen(), EndBB, ContinueBB);
+        Builder->SetInsertPoint(ContinueBB);
+    }
+
+    llvm::Value* lastVal = ops.back()->codegen();
+    Builder->CreateBr(EndBB);
+
+    Builder->SetInsertPoint(EndBB);
+    // llvm::PHINode *phi = llvm::PHINode::Create(llvm::Type::getInt1Ty(*TheContext), static_cast<unsigned>(blocks.size()));
+    llvm::PHINode* phi = Builder->CreatePHI(llvm::Type::getInt1Ty(*TheContext), static_cast<unsigned>(blocks.size()));
+
+    for (const auto& block : blocks | std::views::take(blocks.size() - 1)) {
+        llvm::Value *b = continueCondition ? llvm::ConstantInt::getFalse(*TheContext) : llvm::ConstantInt::getTrue(*TheContext);
+        phi->addIncoming(b, block);
+    }
+
+    phi->addIncoming(lastVal, blocks.back());
+    return phi;
+}
+
+llvm::Value *cmpHelper(OpKind op, llvm::Value *lhs, llvm::Value *rhs) {
+    using enum OpKind;
+    switch (op) {
+        case EqInt:
+            return Builder->CreateICmpEQ(lhs, rhs, "eqtmp");
+        case EqFloat:
+            return Builder->CreateFCmpUEQ(lhs, rhs, "eqtmp");
+        case NeInt:
+            return Builder->CreateICmpNE(lhs, rhs, "netmp");
+        case NeFloat:
+            return Builder->CreateFCmpUNE(lhs, rhs, "netmp");
+        case LtInt:
+            return Builder->CreateICmpSLT(lhs, rhs, "lttmp");
+        case LtFloat:
+            return Builder->CreateFCmpULT(lhs, rhs, "lttmp");
+        case LeInt:
+            return Builder->CreateICmpSLE(lhs, rhs, "letmp");
+        case LeFloat:
+            return Builder->CreateFCmpULE(lhs, rhs, "letmp");
+        case GtInt:
+            return Builder->CreateICmpSGT(lhs, rhs, "gttmp");
+        case GtFloat:
+            return Builder->CreateFCmpUGT(lhs, rhs, "gttmp");
+        case GeInt:
+            return Builder->CreateICmpSGE(lhs, rhs, "getmp");
+        case GeFloat:
+            return Builder->CreateFCmpUGE(lhs, rhs, "getmp");
+        
+        default:
+            babel_unreachable();
+    }
+}
+
+llvm::Value *ComparisonChainAST::codegen() {
+    assert(Operators.size() == Operands.size() - 1);
+
+    if (std::ranges::all_of(Operators, [](std::string_view op){ return op == "&&"; }))
+        return shortCircuit(Operands, true);
+
+    if (std::ranges::all_of(Operators, [](std::string_view op){ return op == "||"; }))
+        return shortCircuit(Operands, false);
+
+    assert(std::ranges::all_of(Operators, [](const std::string& op){ return op == "<" || op == ">" || op == "<=" || op == ">=" || op == "==" || op == "!="; }));
+
+    if (Operands.size() == 2)
+        return cmpHelper(getOperation(Operators.front(), Operands[0]->getType(), Operands[1]->getType()), Operands[0]->codegen(), Operands[1]->codegen());
+
+    llvm::Function *TheFunction = Builder->GetInsertBlock()->getParent();
+    llvm::BasicBlock *EndBB = llvm::BasicBlock::Create(*TheContext, "L", TheFunction);
+    std::vector<llvm::BasicBlock*> blocks = {Builder->GetInsertBlock()};
+    llvm::Value *left = Operands.front()->codegen();
+    BabelType lTy = Operands.front()->getType();
+
+    for (const auto&[op, o] : Zipped{Operands | std::views::drop(1) | std::views::take(Operands.size() - 1), Operators | std::views::take(Operators.size() - 1)}) {
+        llvm::BasicBlock *ContinueBB = llvm::BasicBlock::Create(*TheContext, "L", TheFunction, EndBB);
+        blocks.push_back(ContinueBB);
+
+        llvm::Value* right = op->codegen();
+        BabelType rTy = op->getType();
+
+        Builder->CreateCondBr(cmpHelper(getOperation(o, lTy, rTy), left, right), ContinueBB, EndBB);
+        Builder->SetInsertPoint(ContinueBB);
+
+        left = right;
+        lTy = rTy;
+    }
+
+    llvm::Value* lastVal = cmpHelper(getOperation(Operators.back(), lTy, Operands.back()->getType()), left, Operands.back()->codegen());
+    Builder->CreateBr(EndBB);
+
+    Builder->SetInsertPoint(EndBB);
+    llvm::PHINode *phi = Builder->CreatePHI(llvm::Type::getInt1Ty(*TheContext), static_cast<unsigned>(blocks.size()));
+
+    for (const auto& block : blocks | std::views::take(blocks.size() - 1)) {
+        phi->addIncoming(llvm::ConstantInt::getFalse(*TheContext), block);
+    }
+
+    phi->addIncoming(lastVal, blocks.back());
+    return phi;
+}
+
+llvm::Function *getOrCreate_ipow(llvm::Type* ty) {
+    std::string name = std::format("babel.ipow.i{}.i{}", ty->getIntegerBitWidth(), ty->getIntegerBitWidth());
+
+    llvm::Function* F = TheModule->getFunction(name);
+    if (F) return F;
+
+    llvm::FunctionType *FT = llvm::FunctionType::get(Builder->getDoubleTy(), {ty, ty}, false);
+    F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, name, TheModule.get());
+    F->getArg(0)->setName("Val"); F->getArg(1)->setName("Power");
+
+    llvm::IRBuilder<>::InsertPoint PrevInsertPoint = Builder->saveIP();
+
+    llvm::BasicBlock *BB = llvm::BasicBlock::Create(*TheContext, "entry", F);
+    Builder->SetInsertPoint(BB);
+
+    llvm::IRBuilder<> TmpB(&F->getEntryBlock(), F->getEntryBlock().begin());
+    llvm::AllocaInst *Alloca0 = TmpB.CreateAlloca(ty);
+    llvm::AllocaInst *Alloca1 = TmpB.CreateAlloca(ty);
+    Builder->CreateStore(F->getArg(0), Alloca0);
+    Builder->CreateStore(F->getArg(1), Alloca1);
+    
+    llvm::Value* power = Builder->CreateLoad(ty, Alloca1);
+    llvm::Value* eq = Builder->CreateICmpEQ(power, llvm::ConstantInt::get(ty, 0));
+
+    llvm::BasicBlock* BaseBB = llvm::BasicBlock::Create(*TheContext, "", F);
+    llvm::BasicBlock* RecBB = llvm::BasicBlock::Create(*TheContext, "", F);
+    llvm::BasicBlock* IPowBB = llvm::BasicBlock::Create(*TheContext, "", F);
+    llvm::BasicBlock* UPowBB = llvm::BasicBlock::Create(*TheContext, "", F);
+    Builder->CreateCondBr(eq, BaseBB, RecBB);
+
+    Builder->SetInsertPoint(BaseBB);
+    Builder->CreateRet(llvm::ConstantFP::get(Builder->getDoubleTy(), 1));
+
+    Builder->SetInsertPoint(RecBB);
+    llvm::Value* lt = Builder->CreateICmpSLT(Builder->CreateLoad(ty, Alloca1), llvm::ConstantInt::get(ty, 0));
+    Builder->CreateCondBr(lt, IPowBB, UPowBB);
+
+    Builder->SetInsertPoint(IPowBB);
+    llvm::Value* neg = Builder->CreateNeg(Builder->CreateLoad(ty, Alloca1));
+    llvm::Value* calltmp = Builder->CreateCall(F, {Builder->CreateLoad(ty, Alloca0), neg});
+    llvm::Value* div = Builder->CreateFDiv(llvm::ConstantFP::get(Builder->getDoubleTy(), 1), calltmp);
+    Builder->CreateRet(div);
+    
+    Builder->SetInsertPoint(UPowBB);
+    llvm::Value* sub = Builder->CreateSub(Builder->CreateLoad(ty, Alloca1), llvm::ConstantInt::get(ty, 1));
+    llvm::Value* calltmp1 = Builder->CreateCall(F, {Builder->CreateLoad(ty, Alloca0), sub});
+    llvm::Value* mul = Builder->CreateMul(Builder->CreateSIToFP(Builder->CreateLoad(ty, Alloca0), Builder->getDoubleTy()), calltmp1);
+    Builder->CreateRet(mul);
+    
+    Builder->restoreIP(PrevInsertPoint);
+    return F;
+}
+
 llvm::Value *BinaryOperatorAST::codegen() {
     if (Op == "=" || Op == ":=") {
         if (const auto *Var = dynamic_cast<VariableAST*>(LHS.get())) {
@@ -751,89 +951,200 @@ llvm::Value *BinaryOperatorAST::codegen() {
     llvm::Value *right = RHS->codegen();
     if (!left || !right) return nullptr;
 
-    if (canImplicitCast(LHS->getType(), RHS->getType())) {
-        left = performImplicitCast(left, LHS->getType(), RHS->getType());
-    } else if (canImplicitCast(RHS->getType(), LHS->getType())) {
-        right = performImplicitCast(right, RHS->getType(), LHS->getType());
-    } else {
-        babel_panic("Types dont match for binary operator; implicit cast failed or is not allowed");
+    BabelType lTy = LHS->getType();
+    BabelType rTy = RHS->getType();
+
+    using enum OpKind;
+    switch (getOperation(Op, lTy, rTy)) {
+        case Div: {
+            if (isBabelInteger(lTy) && isBabelInteger(rTy)) {
+                llvm::Type* doubleTy = llvm::Type::getDoubleTy(*TheContext);
+                left = Builder->CreateSIToFP(left, doubleTy, "lhsfp");
+                right = Builder->CreateSIToFP(right, doubleTy, "rhsfp");
+            } else {
+                if (canImplicitCast(lTy, rTy)) {
+                    left = performImplicitCast(left, lTy, rTy);
+                } else if (canImplicitCast(rTy, lTy)) {
+                    right = performImplicitCast(right, rTy, lTy);
+                } else {
+                    babel_panic("Types dont match for binary operator; implicit cast failed or is not allowed");
+                }
+            }
+            break;
+        }
+        case PowerFloatInt: {
+            if (lTy == BabelType::Float16()) {
+                llvm::Type* floatTy = llvm::Type::getFloatTy(*TheContext);
+                left = Builder->CreateFPExt(left, floatTy, "lhsf32");
+            }
+            right = Builder->CreateSExtOrTrunc(right, llvm::Type::getInt32Ty(*TheContext));
+            break;
+        }
+        case PowerFloat: {
+            if ((lTy == BabelType::Float16() || isBabelInteger(lTy)) && rTy == BabelType::Float16()) {
+                llvm::Type* floatTy = llvm::Type::getFloatTy(*TheContext);
+                left = isBabelInteger(lTy) ? Builder->CreateSIToFP(left, floatTy, "lhsf32") : Builder->CreateFPExt(left, floatTy, "lhsf32");
+                right = Builder->CreateFPExt(right, floatTy, "rhsf32");
+                lTy = BabelType::Float32();
+                rTy = BabelType::Float32();
+                break;
+            }
+            /* fallthrough */
+        }
+        case AddInt: case AddFloat: case SubInt: case SubFloat:
+        case MulInt: case MulFloat: case IDiv: case RemInt:
+        case RemFloat: case Shl: case Shr: case LShr:
+        case PowerInt: case BitAnd: case BitXor: case BitOr: {
+            if (canImplicitCast(lTy, rTy)) {
+                left = performImplicitCast(left, lTy, rTy);
+            } else if (canImplicitCast(rTy, lTy)) {
+                right = performImplicitCast(right, rTy, lTy);
+            } else {
+                babel_panic("Types dont match for binary operator; implicit cast failed or is not allowed");
+            }
+        }
+        default:
+            break;
     }
 
-    if (Op == "+") {
-        return Builder->CreateAdd(left, right, "addtmp");
-    } else if (Op == "-") {
-        return Builder->CreateSub(left, right, "subtmp");
-    } else if (Op == "*") {
-        return Builder->CreateMul(left, right, "multmp");
-    } else if (Op == "/") {
-        llvm::Type* doubleTy = llvm::Type::getDoubleTy(*TheContext);
+    switch (getOperation(Op, lTy, rTy)) {
+        case AddInt:
+            return Builder->CreateAdd(left, right, "addtmp");
+        case AddFloat:
+            return Builder->CreateFAdd(left, right, "addtmp");
+        case AddPtr:
+            return Builder->CreateInBoundsGEP(
+                resolveLLVMType(lTy.isPointer() ? *lTy.getPointer().to : *rTy.getPointer().to),
+                lTy.isPointer() ? left : right,
+                {!lTy.isPointer() ? left : right},
+                "paddtmp"
+            );
+        case SubInt:
+            return Builder->CreateSub(left, right, "subtmp");
+        case SubFloat:
+            return Builder->CreateFSub(left, right, "subtmp");
+        case SubPtr:
+            return Builder->CreateInBoundsGEP(
+                resolveLLVMType(lTy.isPointer() ? *lTy.getPointer().to : *rTy.getPointer().to),
+                lTy.isPointer() ? left : right,
+                {Builder->CreateNeg(!lTy.isPointer() ? left : right)},
+                "psubtmp"
+            );
+        case PtrDiff:
+            return Builder->CreatePtrDiff(resolveLLVMType(*lTy.getPointer().to), left, right, "ptrdiff");
+        case MulInt:
+            return Builder->CreateMul(left, right, "multmp");
+        case MulFloat:
+            return Builder->CreateFMul(left, right, "multmp");
+        case MulBool: {
+            llvm::Value* b = lTy == BabelType::Boolean() ? left : right;
+            llvm::Value* num = lTy == BabelType::Boolean() ? right : left;
+            llvm::Function* copysign = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::copysign, {num->getType(), num->getType()});
 
-        llvm::Value* lhs_fp = Builder->CreateSIToFP(left, doubleTy, "lhsfp");
-        llvm::Value* rhs_fp = Builder->CreateSIToFP(right, doubleTy, "rhsfp");
-        return Builder->CreateFDiv(lhs_fp, rhs_fp, "divtmp");
-    } else if (Op == "//") {
-        return Builder->CreateSDiv(left, right, "idivtmp");
-    } else if (Op == "%") {
-        return Builder->CreateSRem(left, right, "remtmp");
-    } else if (Op == "<<") {
-        return Builder->CreateShl(left, right, "lshtmp");
-    } else if (Op == ">>") {
-        return Builder->CreateLShr(left, right, "rshtmp");
-    } else if (Op == "|") {
-        return Builder->CreateOr(left, right, "ortmp");
-    } else if (Op == "||") {
-        return Builder->CreateLogicalOr(left, right, "lortmp");
-    } else if (Op == "&") {
-        return Builder->CreateAnd(left, right, "andtmp");
-    } else if (Op == "&&") {
-        return Builder->CreateLogicalAnd(left, right, "landtmp");
-    } else if (Op == "^" || Op == "^^") {
-        return Builder->CreateXor(left, right, "xortmp");
-    } else if (Op == "==") {
-        return Builder->CreateICmpEQ(left, right, "eqtmp");
-    } else if (Op == "!=") {
-        return Builder->CreateICmpNE(left, right, "netmp");
-    } else if (Op == "<=") {
-        return Builder->CreateICmpSLE(left, right, "letmp");
-    } else if (Op == ">=") {
-        return Builder->CreateICmpSGE(left, right, "getmp");
-    } else if (Op == "<") {
-        return Builder->CreateICmpSLT(left, right, "lttmp");
-    } else if (Op == ">") {
-        return Builder->CreateICmpSGT(left, right, "gttmp");
-    } else {
-        babel_panic("Invalid binary operator %s", Op.c_str());
+            llvm::Value* zeroVal = num->getType()->isFloatingPointTy()
+                ? Builder->CreateCall(copysign, {llvm::ConstantFP::getZero(num->getType()), num})
+                : llvm::cast<llvm::Value>(llvm::ConstantInt::get(num->getType(), 0));
+            return Builder->CreateSelect(b, num, zeroVal, "multmp");
+        }
+        case Div:
+            return Builder->CreateFDiv(left, right, "divtmp");
+        case IDiv:
+            return Builder->CreateSDiv(left, right, "idivtmp");
+        case RemInt:
+            return Builder->CreateSRem(left, right, "remtmp");
+        case RemFloat:
+            return Builder->CreateFRem(left, right, "remtmp");
+        case PowerInt: {
+            assert(left->getType() == right->getType());
+            llvm::Function* F = getOrCreate_ipow(left->getType());
+            return Builder->CreateCall(F, {left, right}, "powtmp");
+        }
+        case PowerFloatInt: {
+            llvm::Function* powi = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::powi, {left->getType(), right->getType()});
+            llvm::Value* call = Builder->CreateCall(powi, {left, right}, "powtmp");
+            return lTy == BabelType::Float16() ? Builder->CreateFPTrunc(call, resolveLLVMType(lTy)) : call;
+        }
+        case PowerFloat: {
+            llvm::Function* pow = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::pow, {left->getType(), right->getType()});
+            llvm::Value* call = Builder->CreateCall(pow, {left, right}, "powtmp");
+            return lTy == BabelType::Float16() && rTy == BabelType::Float16() ? Builder->CreateFPTrunc(call, resolveLLVMType(lTy)) : call;
+        }
+        case Shl:
+            return Builder->CreateShl(left, right, "shltmp");
+        case Shr:
+            return Builder->CreateAShr(left, right, "shrtmp");
+        case LShr:
+            return Builder->CreateLShr(left, right, "lshrtmp");
+        case BitAnd:
+            return Builder->CreateAnd(left, right, "andtmp");
+        case BitXor:
+            return Builder->CreateXor(left, right, "xortmp");
+        case BitOr:
+            return Builder->CreateOr(left, right, "ortmp");
+        
+        default:
+            babel_panic("Invalid binary operator %s(%s, %s)", Op.c_str(), getBabelTypeName(lTy).c_str(), getBabelTypeName(rTy).c_str());
     }
 }
 
 llvm::Value *UnaryOperatorAST::codegen() {
     llvm::Value *operand = Val->codegen();
+    BabelType ty = Val->getType();
     if (!operand) return nullptr;
 
-    if (Op == "!") {
-        return Builder->CreateNot(operand, "nottmp");
-    } else if (Op == "-") {
-        return Builder->CreateNeg(operand, "negtmp");
-    } else if (Op == "+") {
-        return operand; // unary plus is a no-op
-    } else  if (Op == "pre++") {
-        llvm::Value* inc = Builder->CreateAdd(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "inc");
-        Builder->CreateStore(inc, Val->requireLValue());
-        return inc;
-    } else  if (Op == "pre--") {
-        llvm::Value* dec = Builder->CreateSub(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "dec");
-        Builder->CreateStore(dec, Val->requireLValue());
-        return dec;
-    } else if (Op == "post++") {
-        llvm::Value* inc = Builder->CreateAdd(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "inc");
-        Builder->CreateStore(inc, Val->requireLValue());
-        return operand;
-    } else if (Op == "post--") {
-        llvm::Value* dec = Builder->CreateSub(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "dec");
-        Builder->CreateStore(dec, Val->requireLValue());
-        return operand;
-    } else {
-        babel_panic("Invalid unary operator");
+    using enum OpKind;
+    switch (getOperation(Op, ty)) {
+        case Not:
+            return Builder->CreateNot(operand, "nottmp");
+        case Neg:
+            return Builder->CreateNeg(operand, "negtmp");
+        case FNeg:
+            return Builder->CreateFNeg(operand, "negtmp");
+        case Id:
+            return operand; // unary plus is the identity operation (i.e. a no-op)
+        case PreInc: {
+            llvm::Value* inc = Builder->CreateAdd(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "inc");
+            Builder->CreateStore(inc, Val->requireLValue());
+            return inc;
+        }
+        case PreDec: {
+            llvm::Value* dec = Builder->CreateSub(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "dec");
+            Builder->CreateStore(dec, Val->requireLValue());
+            return dec;
+        }
+        case PostInc: {
+            llvm::Value* inc = Builder->CreateAdd(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "inc");
+            Builder->CreateStore(inc, Val->requireLValue());
+            return operand;
+        }
+        case PostDec: {
+            llvm::Value* dec = Builder->CreateSub(operand, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1), "dec");
+            Builder->CreateStore(dec, Val->requireLValue());
+            return operand;
+        }
+        case PrePtrInc: {
+            llvm::Value* inc = Builder->CreateInBoundsGEP(resolveLLVMType(ty), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1)}, "ptrinc");
+            Builder->CreateStore(inc, Val->requireLValue());
+            return inc;
+        }
+        case PrePtrDec: {
+            llvm::Value* dec = Builder->CreateInBoundsGEP(resolveLLVMType(ty), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), -1)}, "ptrdec");
+            Builder->CreateStore(dec, Val->requireLValue());
+            return dec;
+        }
+        case PostPtrInc: {
+            llvm::Value* inc = Builder->CreateInBoundsGEP(resolveLLVMType(ty), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1)}, "ptrinc");
+            Builder->CreateStore(inc, Val->requireLValue());
+            return operand;
+        }
+        case PostPtrDec: {
+            llvm::Value* dec = Builder->CreateInBoundsGEP(resolveLLVMType(ty), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), -1)}, "ptrdec");
+            Builder->CreateStore(dec, Val->requireLValue());
+            return operand;
+        }
+
+        default:
+            babel_panic("Invalid unary operator %s(%s)", Op.c_str(), getBabelTypeName(ty).c_str());
     }
 }
 
@@ -916,9 +1227,13 @@ llvm::Value *ReturnStmtAST::codegen() {
 
     if (Expr) {
         llvm::Value *RetVal = Expr->codegen();
-        if (canImplicitCast(Expr->getType(), TaskTable.at(TheFunction->getName().str()).ret))
+        if (canImplicitCast(Expr->getType(), TaskTable.at(TheFunction->getName().str()).ret)) {
             RetVal = performImplicitCast(RetVal, Expr->getType(), TaskTable.at(TheFunction->getName().str()).ret);
-        Builder->CreateRet(RetVal);
+            Builder->CreateRet(RetVal);
+        } else {
+            babel_panic("Task return type does not match returned value (returned %s but expected %s); implicit cast failed or is not allowed", 
+                getBabelTypeName(Expr->getType()).c_str(), getBabelTypeName(TaskTable.at(TheFunction->getName().str()).ret).c_str());
+        }
     } else {
         Builder->CreateRetVoid();
     }
@@ -1353,12 +1668,12 @@ llvm::Value *TaskCallAST::codegen() {
                 }
                 babel_panic("ambiguous call of polymorphic task '%s', multiple matching tasks exist:\n%s", callsTo.c_str(), candidates.c_str());
             } else {
-            std::string expected = "";
-            for (const auto&[key, value] : TaskTable) {
-                if (key.starts_with(callsTo + ".polymorphic")) {
+                std::string expected = "";
+                for (const auto&[key, value] : TaskTable) {
+                    if (key.starts_with(callsTo + ".polymorphic")) {
                         expected += formatArgs(value.args, value.isVarArg) + '\n';
+                    }
                 }
-            }
                 babel_panic("No matching overload for polymorphic task '%s', only the following were valid:\n%s", callsTo.c_str(), expected.c_str());
             }
         }
