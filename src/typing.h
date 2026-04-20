@@ -241,6 +241,16 @@ std::string getBabelTypeName(BabelType type) {
     babel_unreachable();
 }
 
+std::string formatArgs(const std::deque<BabelType>& args, bool isVarArg) {
+    std::vector<std::string> strArgs;
+    std::ranges::transform(args, std::back_inserter(strArgs), [](BabelType t) { return getBabelTypeName(t); });
+
+    if (isVarArg)
+        strArgs.emplace_back("...");
+
+    return std::format("({})", boost::algorithm::join(strArgs, ", "));
+}
+
 bool isBabelInteger(BabelType type) {
     using enum BasicType;
     if (!type.isBasic())

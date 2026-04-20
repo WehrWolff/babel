@@ -341,7 +341,7 @@ class ContinueStmtAST : public BaseAST {
     std::optional<std::string> Target;
 
     public:
-        explicit ContinueStmtAST(std::optional<std::string> Target) : Target(Target) {}
+        explicit ContinueStmtAST(const std::optional<std::string>& Target) : Target(Target) {}
         llvm::Value *codegen() override;
 };
 
@@ -349,7 +349,7 @@ class BreakStmtAST : public BaseAST {
     std::optional<std::string> Target;
 
     public:
-        explicit BreakStmtAST(std::optional<std::string> Target) : Target(Target) {}
+        explicit BreakStmtAST(const std::optional<std::string>& Target) : Target(Target) {}
         llvm::Value *codegen() override;
 };
 
@@ -403,7 +403,7 @@ class WhileLoopAST : public BaseAST {
     std::unique_ptr<BaseAST> Body;
 
     public:
-        WhileLoopAST(std::optional<std::string> Label, std::unique_ptr<BaseAST> Cond, std::unique_ptr<BaseAST> Body) : Label(Label), Cond(std::move(Cond)), Body(std::move(Body)) {}
+        WhileLoopAST(const std::optional<std::string>& Label, std::unique_ptr<BaseAST> Cond, std::unique_ptr<BaseAST> Body) : Label(Label), Cond(std::move(Cond)), Body(std::move(Body)) {}
         llvm::Value *codegen() override;
 };
 
@@ -415,7 +415,7 @@ class ForLoopAST : public BaseAST {
     std::unique_ptr<BaseAST> Body;
 
     public:
-        ForLoopAST(std::optional<std::string> Label, std::unique_ptr<BaseAST> Init, std::unique_ptr<BaseAST> Cond, std::unique_ptr<BaseAST> Update, std::unique_ptr<BaseAST> Body) : Label(Label), Init(std::move(Init)), Cond(std::move(Cond)), Update(std::move(Update)), Body(std::move(Body)) {}
+        ForLoopAST(const std::optional<std::string>& Label, std::unique_ptr<BaseAST> Init, std::unique_ptr<BaseAST> Cond, std::unique_ptr<BaseAST> Update, std::unique_ptr<BaseAST> Body) : Label(Label), Init(std::move(Init)), Cond(std::move(Cond)), Update(std::move(Update)), Body(std::move(Body)) {}
         llvm::Value *codegen() override;
 };
 
@@ -426,7 +426,7 @@ class ForInLoopAST : public BaseAST {
     std::unique_ptr<BaseAST> Body;
 
     public:
-        ForInLoopAST(std::optional<std::string> Label, std::unique_ptr<BaseAST> Elmnt, std::unique_ptr<BaseAST> Collection, std::unique_ptr<BaseAST> Body) : Label(Label), Elmnt(std::move(Elmnt)), Collection(std::move(Collection)), Body(std::move(Body)) {}
+        ForInLoopAST(const std::optional<std::string>& Label, std::unique_ptr<BaseAST> Elmnt, std::unique_ptr<BaseAST> Collection, std::unique_ptr<BaseAST> Body) : Label(Label), Elmnt(std::move(Elmnt)), Collection(std::move(Collection)), Body(std::move(Body)) {}
         llvm::Value *codegen() override;
 };
 
@@ -465,7 +465,7 @@ class TaskHeaderAST : public BaseAST {
 
     public:
         TaskHeaderAST(const std::string &Name, std::deque<std::string> Args, std::deque<BabelType> ArgTypes, BabelType ReturnType, bool isVarArg) : Name(Name), Args(std::move(Args)), ArgTypes(std::move(ArgTypes)), ReturnType(ReturnType), isVarArg(isVarArg) {
-            TaskTable[Name] = {this->ArgTypes, ReturnType};
+            TaskTable[Name] = {this->ArgTypes, ReturnType, isVarArg};
             PolymorphTable[Name] = PolymorphTable.contains(Name);
 
             for (size_t i = 0; i < Args.size(); i++) {
@@ -480,17 +480,19 @@ class TaskHeaderAST : public BaseAST {
             if (PolymorphTable.contains(Name) && PolymorphTable.at(Name)) {
                 auto underscore_fold = [](std::string a, BabelType b) { return std::move(a) + '_' + getBabelTypeName(b); };
  
-                std::string typeinfo = std::accumulate(std::next(ArgTypes.begin()), ArgTypes.end(), getBabelTypeName(ArgTypes[0]), underscore_fold);
+                std::string typeinfo = !ArgTypes.empty() ? std::accumulate(std::next(ArgTypes.begin()), ArgTypes.end(), getBabelTypeName(ArgTypes[0]), underscore_fold) : "";
 
                 auto node_handle = TaskTable.extract(Name);
+                Name = std::format("{}.polymorphic.{}", Name, typeinfo);
+                Name += isVarArg ? "_..." : "";
+                
                 if (!node_handle.empty()) {
-                    node_handle.key() = std::format("{}.polymorphic.{}", Name, typeinfo);
-                    node_handle.mapped() = {ArgTypes, ReturnType};
+                    node_handle.key() = Name;
+                    node_handle.mapped() = {ArgTypes, ReturnType, isVarArg};
                     TaskTable.insert(std::move(node_handle));
                 } else {
-                    TaskTable[std::format("{}.polymorphic.{}", Name, typeinfo)] = {ArgTypes, ReturnType};
+                    TaskTable[Name] = {ArgTypes, ReturnType, isVarArg};
                 }
-                Name = std::format("{}.polymorphic.{}", Name, typeinfo);
             }
         }
 };
@@ -898,7 +900,7 @@ llvm::Value *BreakStmtAST::codegen() {
 
         Builder->CreateBr(LoopTable.at(Target.value()).__break__);
     } else {
-        if (LoopTable.at(".active").__continue__ == nullptr)
+        if (LoopTable.at(".active").__break__ == nullptr)
             babel_panic("break statement outside of loop not allowed");
         
         Builder->CreateBr(LoopTable.at(".active").__break__);
@@ -1327,19 +1329,38 @@ llvm::Value *TaskCallAST::codegen() {
     if (PolymorphTable.at(callsTo)) {
         auto underscore_fold = [](std::string a, const std::unique_ptr<BaseAST>& b) { return std::move(a) + '_' + getBabelTypeName(b->getType()); };
  
-        std::string typeinfo = std::accumulate(std::next(Args.begin()), Args.end(), getBabelTypeName(Args[0]->getType()), underscore_fold);
-
+        std::string typeinfo = !Args.empty() ? std::accumulate(std::next(Args.begin()), Args.end(), getBabelTypeName(Args[0]->getType()), underscore_fold) : "";
         std::string name = std::format("{}.polymorphic.{}", callsTo, typeinfo);
+
         if (!TaskTable.contains(name)) {
+            auto matches = [&](const std::pair<std::string, TaskTypeInfo>& kv) {
+                auto argTypes = Args | std::views::transform([](const std::unique_ptr<BaseAST>& elmnt){ return elmnt->getType(); });
+
+                return kv.first.starts_with(callsTo) 
+                    && kv.first.ends_with("...")
+                    && std::ranges::equal(kv.second.args, argTypes | std::views::take(kv.second.args.size()));
+            };
+
+            auto filtered = TaskTable | std::views::filter(matches);
+            auto size = std::distance(filtered.begin(), filtered.end());
+
+            if (size == 1) {
+                name = (*filtered.begin()).first;
+            } else if (size > 1) {
+                std::string candidates = "";
+                for (const auto&[_, value] : filtered) {
+                    candidates += formatArgs(value.args, value.isVarArg) + '\n';
+                }
+                babel_panic("ambiguous call of polymorphic task '%s', multiple matching tasks exist:\n%s", callsTo.c_str(), candidates.c_str());
+            } else {
             std::string expected = "";
             for (const auto&[key, value] : TaskTable) {
                 if (key.starts_with(callsTo + ".polymorphic")) {
-                    std::vector<std::string> strArgs;
-                    std::ranges::transform(value.args, std::back_inserter(strArgs), [](BabelType t) { return getBabelTypeName(t); });
-                    expected += std::format("({})\n", boost::algorithm::join(strArgs, ", "));
+                        expected += formatArgs(value.args, value.isVarArg) + '\n';
                 }
             }
-            babel_panic("Task '%s' was called with argument list %s but only the following were valid:\n%s", callsTo.c_str(), typeinfo.c_str(), expected.c_str());
+                babel_panic("No matching overload for polymorphic task '%s', only the following were valid:\n%s", callsTo.c_str(), expected.c_str());
+            }
         }
 
         callsTo = name;
