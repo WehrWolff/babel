@@ -95,7 +95,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
             node = std::make_unique<FloatingPointAST>(atom.data.value());
         } else if (atom.name == "BOOL") {
             node = std::make_unique<BooleanAST>(atom.data.value());
-        } else if (atom.name == "VAR") {
+        } else if (atom.name == "IDENTIFIER") {
             node = std::make_unique<VariableAST>(atom.data.value(), std::nullopt, false, false, false);
         } else if (atom.name == "CSTRING") {
             node = std::make_unique<CStringAST>(unescapeString(atom.data.value().substr(2, atom.data.value().size() - 3)));
@@ -398,7 +398,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         node = std::make_unique<ForInLoopAST>(label, std::move(elmntName), std::move(collection), std::move(block));
     } else if (type == "continue_stmt") {
         std::optional<std::string> label = std::nullopt;
-        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "VAR") {
+        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "IDENTIFIER") {
             label = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
         }
 
@@ -406,7 +406,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         node = std::make_unique<ContinueStmtAST>(label);
     } else if (type == "break_stmt") {
         std::optional<std::string> label = std::nullopt;
-        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "VAR") {
+        if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "IDENTIFIER") {
             label = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
         }
 

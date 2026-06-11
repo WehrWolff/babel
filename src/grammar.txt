@@ -27,17 +27,17 @@ simple_stmt         : NOOP
                     | indirect_assignment
                     | expression
 
-short_declaration   : VAR COLON_EQUALS expression
+short_declaration   : IDENTIFIER COLON_EQUALS expression
 
 continue_stmt       : CONTINUE
-                    | CONTINUE VAR
+                    | CONTINUE IDENTIFIER
 
 break_stmt          : BREAK
-                    | BREAK VAR
+                    | BREAK IDENTIFIER
 
-goto_stmt           : GOTO VAR
+goto_stmt           : GOTO IDENTIFIER
 
-label_stmt          : LABEL_START VAR
+label_stmt          : LABEL_START IDENTIFIER
 
 return_stmt         : RETURN comma_values
                     | RETURN
@@ -46,18 +46,18 @@ raise_stmt          : RAISE expression
 
 import_stmt         : IMPORT comma_values
 
-element_assignment  : VAR LSQUARE expression RSQUARE assignment_operator expression
+element_assignment  : IDENTIFIER LSQUARE expression RSQUARE assignment_operator expression
 
 chained_indirection : DEREF
                     | DEREF chained_indirection
 
-indirect_assignment : VAR chained_indirection assignment_operator expression
+indirect_assignment : IDENTIFIER chained_indirection assignment_operator expression
 
-assignment          : VAR assignment_operator expression
-                    | LET VAR assignment_operator expression
-                    | CONST VAR assignment_operator expression
-                    | LET VAR type_spec assignment_operator expression
-                    | CONST VAR type_spec assignment_operator expression
+assignment          : IDENTIFIER assignment_operator expression
+                    | LET IDENTIFIER assignment_operator expression
+                    | CONST IDENTIFIER assignment_operator expression
+                    | LET IDENTIFIER type_spec assignment_operator expression
+                    | CONST IDENTIFIER type_spec assignment_operator expression
 
 assignment_operator : EQUALS
                     | PLUS_EQUALS
@@ -77,7 +77,7 @@ assignment_operator : EQUALS
 type_spec           : COLON type
 
 type                : TYPE
-                    | VAR LT generic_list GT
+                    | IDENTIFIER LT generic_list GT
                     | MULTIPLY CONST type
                     | DEREF CONST type
                     | MULTIPLY type
@@ -99,8 +99,8 @@ compound_stmt       : task_def
 block               : statement_list
                     | single_stmt_list
 
-args                : VAR type_spec
-                    | VAR type_spec EQUALS expression
+args                : IDENTIFIER type_spec
+                    | IDENTIFIER type_spec EQUALS expression
                     | VARARG
                     | args COMMA args
 
@@ -108,11 +108,11 @@ type_signature      : type
                     | VARARG
                     | type COMMA type_signature
 
-task_header         : TASK VAR LPAREN RPAREN RARR type DO
-                    | TASK VAR LPAREN args RPAREN RARR type DO
+task_header         : TASK IDENTIFIER LPAREN RPAREN RARR type DO
+                    | TASK IDENTIFIER LPAREN args RPAREN RARR type DO
 
-extern_task         : EXTERN TASK VAR LPAREN type_signature RPAREN RARR type
-                    | EXTERN TASK VAR LPAREN RPAREN RARR type
+extern_task         : EXTERN TASK IDENTIFIER LPAREN type_signature RPAREN RARR type
+                    | EXTERN TASK IDENTIFIER LPAREN RPAREN RARR type
 
 task_def            : task_header block END
                     | extern_task
@@ -120,14 +120,14 @@ task_def            : task_header block END
 task_def_list       : task_def
                     | task_def task_def_list
 
-members             : VAR terminator
-                    | VAR type_spec terminator
-                    | VAR terminator members
-                    | VAR type_spec terminator members
+members             : IDENTIFIER terminator
+                    | IDENTIFIER type_spec terminator
+                    | IDENTIFIER terminator members
+                    | IDENTIFIER type_spec terminator members
 
-struct_def          : STRUCT VAR NEWLINE members END
+struct_def          : STRUCT IDENTIFIER NEWLINE members END
 
-class_def           : CLASS VAR NEWLINE members task_def_list END
+class_def           : CLASS IDENTIFIER NEWLINE members task_def_list END
 
 control_flow        : if_stmt
                     | match_stmt
@@ -151,19 +151,19 @@ loop_stmt           : for_loop
                     | while_loop
 
 for_loop            : FOR simple_stmt SEMICOLON expression SEMICOLON simple_stmt DO block END
-                    | LOOP_LABEL_START VAR COLON FOR simple_stmt SEMICOLON expression SEMICOLON simple_stmt DO block END
+                    | LOOP_LABEL_START IDENTIFIER COLON FOR simple_stmt SEMICOLON expression SEMICOLON simple_stmt DO block END
 
-for_in_loop         : FOR VAR IN VAR DO block END
-                    | LOOP_LABEL_START VAR COLON FOR VAR IN VAR DO block END
+for_in_loop         : FOR IDENTIFIER IN IDENTIFIER DO block END
+                    | LOOP_LABEL_START IDENTIFIER COLON FOR IDENTIFIER IN IDENTIFIER DO block END
 
 while_loop          : WHILE expression DO block END
-                    | LOOP_LABEL_START VAR COLON WHILE expression DO block END
+                    | LOOP_LABEL_START IDENTIFIER COLON WHILE expression DO block END
 
 try_stmt            : TRY block catch_blocks END
                     | TRY block catch_blocks FINALLY block END
 
-catch_blocks        : CATCH VAR block
-                    | CATCH VAR block catch_blocks
+catch_blocks        : CATCH IDENTIFIER block
+                    | CATCH IDENTIFIER block catch_blocks
 
 expression          : disjunction
 
@@ -230,9 +230,9 @@ prefix              : PLUS prefix
                     | BIT_AND prefix
                     | postfix
 
-postfix             : postfix DOT VAR
-                    | postfix DOT VAR LPAREN RPAREN
-                    | postfix DOT VAR LPAREN params RPAREN
+postfix             : postfix DOT IDENTIFIER
+                    | postfix DOT IDENTIFIER LPAREN RPAREN
+                    | postfix DOT IDENTIFIER LPAREN params RPAREN
                     | postfix LSQUARE expression RSQUARE
                     | postfix DEREF
                     | postfix INCREMENT
@@ -245,16 +245,16 @@ primary             : atom
                     | class_construction
                     | LPAREN expression RPAREN
 
-macro_call          : AT VAR
-                    | AT VAR LPAREN generic_list RPAREN
+macro_call          : AT IDENTIFIER
+                    | AT IDENTIFIER LPAREN generic_list RPAREN
 
-function_call       : VAR LPAREN RPAREN
-                    | VAR LPAREN params RPAREN
+function_call       : IDENTIFIER LPAREN RPAREN
+                    | IDENTIFIER LPAREN params RPAREN
 
-class_construction  : NEW VAR LPAREN RPAREN
-                    | NEW VAR LPAREN params RPAREN
+class_construction  : NEW IDENTIFIER LPAREN RPAREN
+                    | NEW IDENTIFIER LPAREN params RPAREN
 
-param               : VAR EQUALS expression
+param               : IDENTIFIER EQUALS expression
                     | expression
 
 params              : param COMMA params
@@ -267,7 +267,7 @@ atom                : STRING
                     | INTEGER
                     | FLOATING_POINT
                     | NULL
-                    | VAR
+                    | IDENTIFIER
                     | list
                     | tuple
                     | set

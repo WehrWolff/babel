@@ -145,7 +145,7 @@ class Lexer {
         }
 
         static bool isStmtEnding(std::string_view type) {
-            return type == "VAR" || type == "TYPE" || 
+            return type == "IDENTIFIER" || type == "TYPE" || 
                     type == "INTEGER" || type == "FLOATING_POINT" || type == "CHAR" || type == "STRING" || type == "BOOL" || type == "NULL" ||
                     type == "BREAK" || type == "CONTINUE" || type == "RETURN" || type == "NOOP" || type == "FALLTHROUGH" || type ==  "END" ||
                     type == "INCREMENT" || type == "DECREMENT" || type == "RPAREN" || type == "RSQUARE" || type == "RBRACE";

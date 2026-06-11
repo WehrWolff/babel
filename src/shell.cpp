@@ -145,7 +145,7 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"NULL", "null"},
         {"NEW", "new"},
         {"FLOATING_POINT", "\\b(?:NaN|Inf)(?:_[HhFfDdQq])?\\b"},
-        {"VAR", "[a-zA-Z_][a-zA-Z0-9_]*"},
+        {"IDENTIFIER", "[a-zA-Z_][a-zA-Z0-9_]*"},
         {"FLOATING_POINT", "\\b[0-9](?:[0-9']*[0-9])?[eE][+-]?[0-9](?:[0-9']*[0-9])?(?:_?[HhFfDdQq])?\\b"}, // leave these before integer, so the first part is not matched as one
         {"FLOATING_POINT", "\\b[0-9](?:[0-9']*[0-9])?\\.[0-9](?:[0-9']*[0-9])?(?:[eE][+-]?[0-9](?:[0-9']*[0-9])?)?(?:_?[HhFfDdQq])?\\b"},
         {"FLOATING_POINT", "\\b0x[0-9A-Fa-f](?:[0-9A-Fa-f']*[0-9A-Fa-f])?[pP][+-]?[0-9](?:[0-9']*[0-9])?(?:_[HhFfDdQq])?\\b"}, // hex versions
