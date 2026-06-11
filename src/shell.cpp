@@ -153,6 +153,7 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
     return lexer;
 }
 
+#ifndef BUILDING_TESTS
 int main(int argc, char* argv[]) {
     // Open a new context and module.
     TheContext = std::make_unique<llvm::LLVMContext>();
@@ -212,3 +213,4 @@ int main(int argc, char* argv[]) {
     
     return 0;
 }
+#endif
