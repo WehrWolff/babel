@@ -3,21 +3,21 @@
 
 #include <boost/functional/hash.hpp>
 #include <unordered_map>
+#include <tuple>
 #include "llvm/IR/Type.h"
 #include "util.hpp"
 #include <llvm/IR/Value.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
+#include "indirect.h"
 
 enum class BasicType {
-    Int,
     Int8,
     Int16,
     Int32,
     Int64,
     Int128,
     // BigInt
-    Float,
     Float16,
     Float32,
     Float64,
@@ -30,21 +30,28 @@ enum class BasicType {
 
 struct BabelType;
 struct ArrayType {
-    const BabelType* inner;
-    size_t size;
+    xyz::indirect<BabelType> inner;
+    llvm::Constant* size;
 
     bool operator==(const ArrayType& that) const;
 };
 
+struct AggregateType {
+    std::string name;
+    std::deque<std::variant<xyz::indirect<BabelType>, std::tuple<llvm::Constant*, xyz::indirect<BabelType>>>> templateList;
+
+    bool operator==(const AggregateType& that) const = default; // needs to be custom in the future
+};
+
 struct PointerType {
-    const BabelType* to;
+    xyz::indirect<BabelType> to;
     bool pointsToConst;
 
     bool operator==(const PointerType& that) const;
 };
 
 struct BabelType {
-    std::variant<BasicType, ArrayType, PointerType> type;
+    std::variant<BasicType, AggregateType, PointerType> type;
 
     static BabelType Int() { return BabelType{BasicType::Int32}; }
     static BabelType Int8() { return BabelType{BasicType::Int8}; }
@@ -58,20 +65,33 @@ struct BabelType {
     static BabelType Float32() { return BabelType{BasicType::Float32}; }
     static BabelType Float64() { return BabelType{BasicType::Float64}; }
     static BabelType Float128() { return BabelType{BasicType::Float128}; }
+    static BabelType Double() { return BabelType{BasicType::Float64}; }
     static BabelType Boolean() { return BabelType{BasicType::Boolean}; }
     static BabelType Character() { return BabelType{BasicType::Character}; }
     static BabelType CString() { return BabelType{BasicType::CString}; }
     static BabelType Void() { return BabelType{BasicType::Void}; }
-    static BabelType Array(const BabelType* inner, size_t size) { return BabelType{ArrayType{inner, size}}; }
-    static BabelType Pointer(const BabelType* to, const bool pointsToConst) { return BabelType{PointerType{to, pointsToConst}}; }
+    static BabelType Aggregate(const std::string name, std::deque<std::variant<xyz::indirect<BabelType>, std::tuple<llvm::Constant*, xyz::indirect<BabelType>>>> templates) { return BabelType{AggregateType{name, templates}}; }
+    // static BabelType Array(const xyz::indirect<BabelType> inner, size_t size) { return BabelType{ArrayType{inner, size}}; }
+    static BabelType Pointer(const xyz::indirect<BabelType> to, const bool pointsToConst) { return BabelType{PointerType{to, pointsToConst}}; }
 
     bool isBasic() const { return std::holds_alternative<BasicType>(type); }
-    bool isArray() const { return std::holds_alternative<ArrayType>(type); }
+    bool isAggregate() const { return std::holds_alternative<AggregateType>(type); }
     bool isPointer() const { return std::holds_alternative<PointerType>(type); }
-
+    
     BasicType getBasic() const { return std::get<BasicType>(type); }
-    ArrayType getArray() const { return std::get<ArrayType>(type); }
+    AggregateType getAggregate() const { return std::get<AggregateType>(type); }
     PointerType getPointer() const { return std::get<PointerType>(type); }
+    
+    // not directly a type itself, but a helper for easier access, since it's so common
+    bool isArray() const { return std::holds_alternative<AggregateType>(type) && std::get<AggregateType>(type).name == "Array"; }
+    ArrayType getArray() const {
+        std::deque<std::variant<xyz::indirect<BabelType>, std::tuple<llvm::Constant *, xyz::indirect<BabelType>>>> tl = std::get<AggregateType>(type).templateList;
+        assert(tl.size() == 2);
+
+        auto inner = std::get<xyz::indirect<BabelType>>(tl[0]);
+        auto size = std::get<std::tuple<llvm::Constant *, xyz::indirect<BabelType>>>(tl[1]);
+        return {inner, std::get<llvm::Constant*>(size)};
+    }
 
     bool operator==(const BabelType& that) const = default;
 };
@@ -105,6 +125,16 @@ struct std::hash<ArrayType> {
 };
 
 template <>
+struct std::hash<AggregateType> {
+    size_t operator()(const AggregateType& a) const {
+        size_t seed = 0;
+        boost::hash_combine(seed, a.name);
+        boost::hash_combine(seed, a.templateList);
+        return seed;
+    }
+};
+
+template <>
 struct std::hash<PointerType> {
     size_t operator()(const PointerType& p) const {
         size_t seed = 0;
@@ -120,10 +150,33 @@ struct std::hash<BabelType> {
     }
 };
 
+namespace boost {
+    template <typename T>
+    struct hash<xyz::indirect<T>> {
+        std::size_t operator()(const xyz::indirect<T>& v) const {
+            return std::hash<xyz::indirect<T>>{}(v);
+        }
+    };
+}
+
+namespace xyz {
+    template <typename T>
+    std::size_t hash_value(const indirect<T>& v) {
+        return std::hash<indirect<T>>{}(v);
+    }
+}
+
 inline std::size_t hash_value(const ArrayType& a) {
     std::size_t seed = 0;
     boost::hash_combine(seed, *a.inner);
     boost::hash_combine(seed, a.size);
+    return seed;
+}
+
+inline std::size_t hash_value(const AggregateType& a) {
+    std::size_t seed = 0;
+    boost::hash_combine(seed, a.name);
+    boost::hash_combine(seed, a.templateList);
     return seed;
 }
 
@@ -141,27 +194,11 @@ inline std::size_t hash_value(const BabelType& t) {
 static std::unique_ptr<llvm::LLVMContext> TheContext;
 static std::unique_ptr<llvm::IRBuilder<>> Builder;
 
-class TypeArena {
-    std::vector<std::unique_ptr<BabelType>> storage;
-
-public:
-    template<typename... Args>
-    const BabelType* make(Args&&... args) {
-        storage.push_back(
-            std::make_unique<BabelType>(std::forward<Args>(args)...)
-        );
-        return storage.back().get();
-    }
-};
-
-static TypeArena TheArena;
-
 llvm::Type *resolveLLVMType(BabelType type) {
     using enum BasicType;
 
     if (type.isBasic()) {
         switch (type.getBasic()) {
-            case Int:
             case Int32:
                 return llvm::Type::getInt32Ty(*TheContext);
             case Int8:
@@ -173,7 +210,6 @@ llvm::Type *resolveLLVMType(BabelType type) {
             case Int128:
                 return llvm::Type::getInt128Ty(*TheContext);
 
-            case Float:
             case Float32:
                 return llvm::Type::getFloatTy(*TheContext);
             case Float16:
@@ -199,7 +235,8 @@ llvm::Type *resolveLLVMType(BabelType type) {
                 babel_panic("Unknow type");
         }
     } else if (type.isArray()) {
-        return llvm::ArrayType::get(resolveLLVMType(*type.getArray().inner), type.getArray().size);
+        // size has to be std::unique_ptr<BaseAST>, and then we need to do: type.getArray().size->codegenComptime()->getUniqueInteger().getZExtValue()
+        return llvm::ArrayType::get(resolveLLVMType(*type.getArray().inner), type.getArray().size->getUniqueInteger().getZExtValue());
     }
 
     // return llvm::PointerType::getUnqual(resolveLLVMType(*type.getPointer().to));
@@ -211,14 +248,12 @@ std::string getBabelTypeName(BabelType type) {
 
     if (type.isBasic()) {
         switch (type.getBasic()) {
-            case Int:
             case Int32:     return "int32";
             case Int8:      return "int8";
             case Int16:     return "int16";
             case Int64:     return "int64";
             case Int128:    return "int128";
 
-            case Float:
             case Float32:   return "float32";
             case Float16:   return "float16";
             case Float64:   return "float64";
@@ -233,9 +268,9 @@ std::string getBabelTypeName(BabelType type) {
                 babel_panic("Unknown type");
         }
     } else if (type.isArray()) {
-        return "Array<" + getBabelTypeName(*type.getArray().inner) + ">";
+        return std::format("Array<{}, {}>", getBabelTypeName(*type.getArray().inner), type.getArray().size->getUniqueInteger().getZExtValue());
     } else if (type.isPointer()) {
-        return getBabelTypeName(*type.getPointer().to) + "*";
+        return "*" + std::string(type.getPointer().pointsToConst ? "const " : "") + getBabelTypeName(*type.getPointer().to);
     }
 
     babel_unreachable();
@@ -262,7 +297,6 @@ bool isBabelInteger(BabelType type) {
         case Int32:
         case Int64:
         case Int128:
-        case Int:
             return true;
 
         default:
@@ -280,7 +314,6 @@ bool isBabelFloat(BabelType type) {
         case Float32:
         case Float64:
         case Float128:
-        case Float:
             return true;
 
         default:

@@ -1,4 +1,4 @@
-task fibonacci(n: int) => int do
+task fibonacci(n: Int) => Int do
     if n <= 1 then
         return n
     end
@@ -6,5 +6,5 @@ task fibonacci(n: int) => int do
     return fibonacci(n - 1) + fibonacci(n - 2)
 end
 
-extern task printd(int) => void
+extern task printd(Int) => Void
 printd(fibonacci(42))

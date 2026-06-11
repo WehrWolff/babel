@@ -41,53 +41,112 @@ struct TreeNode {
     }
 };
 
-BabelType getBabelType(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& stack) {
+struct Symbol {
+    std::variant<std::unique_ptr<BaseAST>, BabelType> value;
+
+    explicit (false) Symbol(BabelType type) : value(type) {}
+    explicit Symbol(std::unique_ptr<BaseAST> var) : value(std::move(var)) {}
+    Symbol(Symbol&&) noexcept = default;
+    Symbol &operator=(Symbol&&) noexcept = default;
+
+    BabelType obtainType() {
+        if (!std::holds_alternative<BabelType>(value))
+            babel_panic("use of undeclared type '%s'", dynamic_cast<VariableAST*>(std::get<std::unique_ptr<BaseAST>>(value).get())->getName().c_str());
+
+        return std::get<BabelType>(value);
+    }
+};
+
+const std::unordered_map<std::string, BabelType> TypeMap = {
+    {"Int", BabelType::Int()},
+    {"Int8", BabelType::Int8()},
+    {"Int16", BabelType::Int16()},
+    {"Int32", BabelType::Int32()},
+    {"Int64", BabelType::Int64()},
+    {"Int128", BabelType::Int128()},
+    {"Float", BabelType::Float()},
+    {"Float16", BabelType::Float16()},
+    {"Float32", BabelType::Float32()},
+    {"Float64", BabelType::Float64()},
+    {"Float128", BabelType::Float128()},
+    {"Double", BabelType::Double()},
+    {"Bool", BabelType::Boolean()},
+    {"Char", BabelType::Character()},
+    {"Cstr", BabelType::CString()},
+    {"Void", BabelType::Void()},
+};
+
+Symbol getBabelType(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>, Symbol>>& stack, int removeCount) {
     // ignore optionals, arrays and template stuff for now
-
-    const std::unordered_map<std::string, BabelType> TypeMap = {
-        {"int", BabelType::Int()},
-        {"int8", BabelType::Int8()},
-        {"int16", BabelType::Int16()},
-        {"int32", BabelType::Int32()},
-        {"int64", BabelType::Int64()},
-        {"int128", BabelType::Int128()},
-        {"float", BabelType::Float()},
-        {"float16", BabelType::Float16()},
-        {"float32", BabelType::Float32()},
-        {"float64", BabelType::Float64()},
-        {"float128", BabelType::Float128()},
-        {"bool", BabelType::Boolean()},
-        {"char", BabelType::Character()},
-        {"cstr", BabelType::CString()},
-        {"void", BabelType::Void()},
-    };
-
-    BabelType type = TypeMap.at(std::get<TreeNode>(stack.top()).data.value()); stack.pop();
-
-    // TODO: rethink this, there doesn't have to be a colon (e.g. extern task lalala() => void)
-    // should work for now tho (because of bottom return)
-    if (std::holds_alternative<TreeNode>(stack.top()) && std::get<TreeNode>(stack.top()).name == "COLON") {
-        return type;
-    }
-
-    while (std::holds_alternative<TreeNode>(stack.top()) && (std::get<TreeNode>(stack.top()).name == "MULTIPLY" || std::get<TreeNode>(stack.top()).name == "CONST")) {
-        bool isConst = std::get<TreeNode>(stack.top()).name == "CONST";
-        if (isConst)
-            stack.pop();
+    if (removeCount == 1) {
+        std::string ty = std::get<TreeNode>(stack.top()).data.value(); stack.pop();
         
-        assert(std::get<TreeNode>(stack.top()).name == "MULTIPLY"); stack.pop();
+        if (TypeMap.contains(ty)) {
+            return TypeMap.at(ty); 
+        } else if (ClassTypes.contains(ty)) {
+            return ClassTypes.at(ty);
+        } else {
+            // babel_panic("use of undeclared type '%s'", ty.c_str());
+            // a bit hacky but well
+            return Symbol{std::make_unique<VariableAST>(ty, std::nullopt, false, false, false)};
+        }
+    } else if (removeCount == 2) {
+        BabelType type = std::get<Symbol>(stack.top()).obtainType(); stack.pop();
 
-        const BabelType* stored = TheArena.make(type);
-        type = BabelType::Pointer(stored, isConst);
+        if (std::get<TreeNode>(stack.top()).name == "MULTIPLY" || std::get<TreeNode>(stack.top()).name == "DEREF") {
+            stack.pop();
+            return BabelType::Pointer(xyz::indirect(type), false);
+        }
+
+        if (std::get<TreeNode>(stack.top()).name == "") {
+            stack.pop();
+            // question mark (optional type) in the future
+            babel_stub();
+        }
+        
+        babel_unreachable();
+    } else if (removeCount == 3) {
+        BabelType type = std::get<Symbol>(stack.top()).obtainType(); stack.pop();
+        stack.pop(); stack.pop(); // *const
+        return BabelType::Pointer(xyz::indirect(type), true);
+    } else {
+        size_t count = std::get<TreeNode>(stack.top()).data.value().size(); stack.pop();
+        std::deque<std::variant<xyz::indirect<BabelType>, std::tuple<llvm::Constant*, xyz::indirect<BabelType>>>> templates = {};
+
+        while (count-- > 0) {
+            while (!std::holds_alternative<TreeNode>(stack.top())) {
+                if (std::holds_alternative<Symbol>(stack.top())) {
+                    Symbol sym = std::move(std::get<Symbol>(stack.top())); stack.pop();
+
+                    if (std::holds_alternative<BabelType>(sym.value)) {
+                        templates.emplace_front(xyz::indirect(sym.obtainType()));
+                    } else {
+                        // TODO: variable codegenComptime will return nullptr at this point
+                        std::unique_ptr<BaseAST> astNode = std::move(std::get<std::unique_ptr<BaseAST>>(sym.value));
+                        templates.emplace_front(std::tuple<llvm::Constant*, xyz::indirect<BabelType>>{astNode->codegenComptime(), xyz::indirect(astNode->getType())});
+                    }
+                } else {
+                    std::unique_ptr<BaseAST> astNode = std::move(std::get<std::unique_ptr<BaseAST>>(stack.top())); stack.pop();
+                    templates.emplace_front(std::tuple<llvm::Constant*, xyz::indirect<BabelType>>{astNode->codegenComptime(), xyz::indirect(astNode->getType())});
+                }
+
+                if (std::get<TreeNode>(stack.top()).name == "COMMA")
+                    stack.pop();
+            }
+            stack.pop(); // LT
+
+            std::string name = std::get<TreeNode>(stack.top()).data.value(); stack.pop();
+            templates = {xyz::indirect(BabelType::Aggregate(name, templates))};
+        }
+
+        return *std::get<xyz::indirect<BabelType>>(templates.at(0));
     }
-
-    return type;
 }
 
-void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nodeStack, std::string_view type, int removeCount) {
-    std::variant<TreeNode, std::unique_ptr<BaseAST>> node;
+void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>, Symbol>>& nodeStack, std::string_view type, int removeCount) {
+    std::variant<TreeNode, std::unique_ptr<BaseAST>, Symbol> node;
 
-    if (type == "atom") {
+    if (type == "atom" || type == "literal") {
         TreeNode atom = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
         if (atom.name == "INTEGER") {
             node = std::make_unique<IntegerAST>(atom.data.value());
@@ -107,6 +166,8 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
 
         //std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
         //fprintf(stderr, "\n");
+    } else if (type == "type") {
+        node = getBabelType(nodeStack, removeCount);
     } else if (type == "sum" || type == "term" || type == "exponentiation" || type == "shift_expression" || type == "bitwise_and" || type == "bitwise_or" || type == "bitwise_xor") {
         std::unique_ptr<BaseAST> rhs = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
         TreeNode op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
@@ -179,10 +240,8 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         TreeNode op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
         
         std::optional<BabelType> varType = std::nullopt;
-        // TODO: Handle the new typing system! (also in the task headers/externs)
-        // TODO: DIFFERENT CHECK!
-        if (std::get<TreeNode>(nodeStack.top()).name == "TYPE") {
-            varType = getBabelType(nodeStack);
+        if (std::holds_alternative<Symbol>(nodeStack.top())) {
+            varType = std::get<Symbol>(nodeStack.top()).obtainType(); nodeStack.pop();
             nodeStack.pop(); // COLON
         }
 
@@ -319,7 +378,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         done:
             //std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
             fprintf(stderr, "\n");
-    } else if (type == "elif_stmt" || type == "task_header" || type == "args" || type == "params" || type == "generic_list" || type == "type" || type == "type_spec" || type == "type_signature" || type == "and_chain" || type == "or_chain") {
+    } else if (type == "elif_stmt" || type == "args" || type == "params" || type == "generic_list" || type == "macro_params" || type == "type_spec" || type == "type_signature" || type == "and_chain" || type == "or_chain") {
         return; // handled by it's corresponding statement
     } else if (type == "while_loop") {
         nodeStack.pop(); // END
@@ -433,22 +492,22 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
 
         node = std::make_unique<LabelStmtAST>(name);
     } else if (type == "extern_task") {
-        BabelType retType = getBabelType(nodeStack);
+        BabelType retType = std::get<Symbol>(nodeStack.top()).obtainType(); nodeStack.pop();
         nodeStack.pop(); nodeStack.pop(); // RARR and RPAREN
 
         std::deque<BabelType> ArgTypes;
         bool isVarArg = false;
 
         bool isFirstIter = true;
-        while (std::get<TreeNode>(nodeStack.top()).name != "LPAREN") {
-            if (std::get<TreeNode>(nodeStack.top()).name == "VARARG") {
+        while (!std::holds_alternative<TreeNode>(nodeStack.top()) || std::get<TreeNode>(nodeStack.top()).name != "LPAREN") {
+            if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "VARARG") {
                 isVarArg = true;
                 nodeStack.pop(); // VARARG
 
                 if (!isFirstIter)
                     babel_panic("variable arguments must appear last in task definition");
             } else {
-                ArgTypes.push_front(getBabelType(nodeStack));
+                ArgTypes.push_front(std::get<Symbol>(nodeStack.top()).obtainType()); nodeStack.pop();
             }
 
             if (std::get<TreeNode>(nodeStack.top()).name == "COMMA")
@@ -462,18 +521,8 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         nodeStack.pop(); nodeStack.pop(); // TASK and EXTERN
 
         node = std::make_unique<TaskHeaderAST>(TaskName, std::deque<std::string>(ArgTypes.size(), "") , ArgTypes, retType, isVarArg);
-    } else if (type == "task_def") {
-        nodeStack.pop(); // END
-
-        std::deque<std::unique_ptr<BaseAST>> statements;
-        while (!std::holds_alternative<TreeNode>(nodeStack.top())) {
-            statements.push_front(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())));
-            nodeStack.pop();
-        }
-        std::unique_ptr<BaseAST> block = std::make_unique<BlockAST>(std::move(statements));
-
-        nodeStack.pop(); // DO
-        BabelType retType = getBabelType(nodeStack);
+    } else if (type == "task_header") {
+        BabelType retType = std::get<Symbol>(nodeStack.top()).obtainType(); nodeStack.pop();
         nodeStack.pop(); nodeStack.pop(); // RARR and RPAREN
 
         std::deque<std::string> ArgNames;
@@ -481,8 +530,8 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         bool isVarArg = false;
 
         bool isFirstIter = true;
-        while (std::get<TreeNode>(nodeStack.top()).name != "LPAREN") {
-            if (std::get<TreeNode>(nodeStack.top()).name == "VARARG") {
+        while (!std::holds_alternative<TreeNode>(nodeStack.top()) || std::get<TreeNode>(nodeStack.top()).name != "LPAREN") {
+            if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "VARARG") {
                 isVarArg = true;
                 nodeStack.pop(); // VARARG
 
@@ -490,7 +539,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
                     babel_panic("variable arguments must appear last in task definition");
             } else {
                 // assuming no default value for now
-                ArgTypes.push_front(getBabelType(nodeStack));
+                ArgTypes.push_front(std::get<Symbol>(nodeStack.top()).obtainType()); nodeStack.pop();
                 nodeStack.pop(); // COLON
                 ArgNames.push_front(std::get<TreeNode>(nodeStack.top()).data.value()); nodeStack.pop();
             }
@@ -505,7 +554,21 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
         std::string TaskName = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
         nodeStack.pop(); // TASK
         
-        auto header = std::make_unique<TaskHeaderAST>(TaskName, std::move(ArgNames), std::move(ArgTypes), retType, isVarArg);
+        node = std::make_unique<TaskHeaderAST>(TaskName, std::move(ArgNames), std::move(ArgTypes), retType, isVarArg);
+    } else if (type == "task_def") {
+        nodeStack.pop(); // END
+
+        std::deque<std::unique_ptr<BaseAST>> statements;
+        while (!std::holds_alternative<TreeNode>(nodeStack.top())) {
+            statements.push_front(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())));
+            nodeStack.pop();
+        }
+        std::unique_ptr<BaseAST> block = std::make_unique<BlockAST>(std::move(statements));
+
+        nodeStack.pop(); // DO
+
+        auto ptr = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
+        auto header = dynamic_unique_cast<TaskHeaderAST>(std::move(ptr));
         node = std::make_unique<TaskAST>(std::move(header), std::move(block));
     } else if (type == "macro_call") {
         std::deque<std::variant<std::unique_ptr<BaseAST>, BabelType>> Args;
@@ -514,8 +577,13 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
 
             // assuming expressions/types as params
             while (!std::holds_alternative<TreeNode>(nodeStack.top()) || std::get<TreeNode>(nodeStack.top()).name != "LPAREN") {
-                if (std::holds_alternative<TreeNode>(nodeStack.top())) {
-                    Args.emplace_front(getBabelType(nodeStack));
+                if (std::holds_alternative<Symbol>(nodeStack.top())) {
+                    Args.emplace_front(std::move(std::get<Symbol>(nodeStack.top()).value)); nodeStack.pop();
+                } else if (dynamic_cast<VariableAST*>(std::get<std::unique_ptr<BaseAST>>(nodeStack.top()).get())) {
+                    std::string s = dynamic_cast<VariableAST*>(std::get<std::unique_ptr<BaseAST>>(nodeStack.top()).get())->getName(); nodeStack.pop();
+                    nodeStack.emplace(TreeNode{"type", s, {}});
+                    nodeStack.emplace(getBabelType(nodeStack, 1));
+                    continue;
                 } else {
                     Args.emplace_front(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top()))); nodeStack.pop();
                 }

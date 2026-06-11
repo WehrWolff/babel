@@ -57,6 +57,7 @@ static std::map<std::string, llvm::BasicBlock*> LabelTable;
 static std::map<std::string, LoopInfo> LoopTable = {{".active", {nullptr, nullptr}}};
 static std::map<std::string, TaskTypeInfo> TaskTable;
 static std::map<std::string, bool> PolymorphTable;
+static std::map<std::string, BabelType> ClassTypes;
 
 // Base class for all expression node
 class BaseAST {
@@ -253,7 +254,7 @@ class ArrayAST : public BaseAST {
         }
         llvm::Value* codegen() override;
         llvm::Constant *codegenComptime() override;
-        BabelType getType() const override { return BabelType::Array(&Inner, Size); }
+        BabelType getType() const override { return BabelType::Aggregate("Array", {xyz::indirect(Inner), std::make_tuple(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), Size), xyz::indirect(BabelType::Int32()))}); }
         bool isComptimeAssignable() const override { return std::ranges::all_of(Val, [](const std::unique_ptr<BaseAST>& elmnt) {return elmnt->isComptimeAssignable(); }); }
 };
 
@@ -294,7 +295,6 @@ class DereferenceOperatorAST : public BaseAST {
 };
 
 class AddressOfOperatorAST : public BaseAST {
-    const BabelType To;
     std::unique_ptr<BaseAST> Val;
 
     public:
@@ -308,7 +308,7 @@ class AddressOfOperatorAST : public BaseAST {
         }
         llvm::Value *codegen() override;
         llvm::Constant *codegenComptime() override { assert(isComptimeAssignable()); return llvm::cast<llvm::Constant>(codegen()); }
-        BabelType getType() const override { return BabelType::Pointer(&To, Var->getConstness()); }
+        BabelType getType() const override { return BabelType::Pointer(xyz::indirect(Val->getType()), false/* Val->getConstness() */); } // TODO: Change this for Conatiner
         bool isComptimeAssignable() const override { return Val->isComptimeAssignable(); }
 };
 
@@ -454,7 +454,7 @@ class MacroCallAST : public BaseAST {
         MacroCallAST(const std::string& name, std::deque<std::variant<std::unique_ptr<BaseAST>, BabelType>> Args) : name(name), Args(std::move(Args)) {}
         BabelType getType() const override;
         llvm::Value *codegen() override;
-        bool isComptimeAssignable() const override { return true; }
+        bool isComptimeAssignable() const override;
         bool isStatementLike() const override { return true; }
 };
 
@@ -588,8 +588,7 @@ BabelType TaskCallAST::getType() const  {
 }
 
 void StoreOrMemCpy(BaseAST* src, BabelType srcType, llvm::Value* dest, BabelType destType) {
-    // Aggregate would be more precise, change this in the future
-    if (src->getType().isArray()) {
+    if (src->getType().isAggregate()) {
         llvm::Type* type = resolveLLVMType(src->getType());
         uint64_t size = TheModule->getDataLayout().getTypeAllocSize(type);
         llvm::Align align = TheModule->getDataLayout().getABITypeAlign(type);
@@ -1312,7 +1311,7 @@ llvm::Value *IfStmtAST::codegen() {
         requiresMerge = true;
         Builder->CreateCondBr(CondV, ThenBB, MergeBB);
     } else {
-    Builder->CreateCondBr(CondV, ThenBB, ElseBB);
+        Builder->CreateCondBr(CondV, ThenBB, ElseBB);
     }
 
     // then block
@@ -1322,13 +1321,13 @@ llvm::Value *IfStmtAST::codegen() {
     // TODO: update to hasTerminator in llvm 22
     if (!ThenBB->getTerminator()) {
         requiresMerge = true;
-    Builder->CreateBr(MergeBB);
+        Builder->CreateBr(MergeBB);
     }
 
     // else block
     if (Else) {
-    TheFunction->insert(TheFunction->end(), ElseBB);
-    Builder->SetInsertPoint(ElseBB);
+        TheFunction->insert(TheFunction->end(), ElseBB);
+        Builder->SetInsertPoint(ElseBB);
         Else->codegen();
         if (!ElseBB->getTerminator()) {
             requiresMerge = true;
@@ -1339,12 +1338,12 @@ llvm::Value *IfStmtAST::codegen() {
     // in case of elif chain, if the current block has no terminator we have to merge back further
     if (!Builder->GetInsertBlock()->getTerminator()) {
         requiresMerge = true;
-    Builder->CreateBr(MergeBB);
+        Builder->CreateBr(MergeBB);
     }
 
     if (requiresMerge) {
-    TheFunction->insert(TheFunction->end(), MergeBB);
-    Builder->SetInsertPoint(MergeBB);
+        TheFunction->insert(TheFunction->end(), MergeBB);
+        Builder->SetInsertPoint(MergeBB);
     }
 
     return nullptr;
@@ -1464,7 +1463,7 @@ llvm::Value *ForInLoopAST::codegen() {
     llvm::AllocaInst* end = Builder->CreateAlloca(llvm::PointerType::getUnqual(*TheContext), nullptr, "end");
 
     llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
-    llvm::Value* length = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), Collection->getType().getArray().size);
+    llvm::Value* length = Collection->getType().getArray().size;
 
     // alternatively call Iterable.begin()
     llvm::Value* front = Builder->CreateInBoundsGEP(resolveLLVMType(Collection->getType()), Collection->requireLValue(), {zero, zero});
@@ -1515,12 +1514,27 @@ llvm::Value *ForInLoopAST::codegen() {
     return nullptr;
 }
 
+bool MacroCallAST::isComptimeAssignable() const {
+    if (name == "size_of") {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 BabelType MacroCallAST::getType() const {
     if (name == "va_arg") {
         if (Args.size() != 2 || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[0]) || !std::holds_alternative<BabelType>(Args[1]))
             babel_panic("@va_arg requires list name and type parameter");
         
         return std::get<BabelType>(Args[1]);
+    } else if (name == "size_of" || name == "ptrToInt") {
+        return BabelType::Int64(); // should be usize in the future
+    } else if (name == "trunc" || name == "extend" || name == "intToPtr" || name == "ptrCast" || name == "bitcast") {
+        if (Args.size() != 2 || !std::holds_alternative<BabelType>(Args[0]) || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[1]))
+            babel_panic("@%s requires destination type and source value arguments", name.c_str());
+        
+        return std::get<BabelType>(Args[0]);
     } else {
         return BabelType::Void();
     }
@@ -1584,7 +1598,7 @@ llvm::Value *MacroCallAST::codegen() {
             babel_panic("@va_list requires name parameter");
 
         auto var = dynamic_cast<VariableAST*>(std::get<std::unique_ptr<BaseAST>>(Args[0]).get());
-        NamedValues[var->getName()] = {ap, BabelType::Pointer(TheArena.make(BabelType::Void()), true), true};
+        NamedValues[var->getName()] = {ap, BabelType::Pointer(xyz::indirect(BabelType::Void()), true), true};
 
         return nullptr;
     } else if (name == "va_start") {
@@ -1651,6 +1665,110 @@ llvm::Value *MacroCallAST::codegen() {
         }
         
         return Builder->CreateVAArg(ap, resolveLLVMType(std::get<BabelType>(Args[1])));
+    } else if (name == "size_of") {
+        if (Args.size() != 1)
+            babel_panic("@size_of requires one argument");
+        
+        BabelType ty = std::holds_alternative<BabelType>(Args[0]) ? std::get<BabelType>(Args[0]) : std::get<std::unique_ptr<BaseAST>>(Args[0])->getType();
+        std::string name = std::format("babel.size_of.{}", getBabelTypeName(ty));
+
+        llvm::Function* F = TheModule->getFunction(name);
+        if (!F) {
+            llvm::FunctionType *FT = llvm::FunctionType::get(Builder->getInt64Ty(), {}, false);
+            F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, name, TheModule.get());
+    
+            llvm::IRBuilder<>::InsertPoint PrevInsertPoint = Builder->saveIP();
+    
+            llvm::BasicBlock *BB = llvm::BasicBlock::Create(*TheContext, "entry", F);
+            Builder->SetInsertPoint(BB);
+    
+            // We pretend there is a T array at the ptr null, get the address of the second element and convert it to int
+            // https://stackoverflow.com/a/30830445
+            llvm::Value* size = Builder->CreateInBoundsGEP(resolveLLVMType(ty), llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(*TheContext)), {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1)}, "Size");
+            llvm::Value* sizeI = Builder->CreatePtrToInt(size, llvm::Type::getInt64Ty(*TheContext), "SizeI");
+            Builder->CreateRet(sizeI);
+            
+            Builder->restoreIP(PrevInsertPoint);
+        }
+
+        return Builder->CreateCall(F, {});
+    } else if (name == "trunc") {
+        if (Args.size() != 2 || !std::holds_alternative<BabelType>(Args[0]) || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[1]))
+            babel_panic("@trunc requires destination type and source value arguments");
+
+        auto destType = std::get<BabelType>(Args[0]);
+        auto srcVal = std::move(std::get<std::unique_ptr<BaseAST>>(Args[1]));
+        auto srcType = srcVal->getType();
+
+        if (destType.getBasic() >= srcType.getBasic())
+            babel_panic("destination of truncating cast must be smaller than its source");
+        
+        if (isBabelInteger(srcType) && isBabelInteger(destType)) {
+            return Builder->CreateTrunc(srcVal->codegen(), resolveLLVMType(destType));
+        } else if (isBabelFloat(srcType) && isBabelFloat(destType)) {
+            return Builder->CreateFPTrunc(srcVal->codegen(), resolveLLVMType(destType));
+        } else {
+            // in the future also support to unsigned
+            return Builder->CreateFPToSI(srcVal->codegen(), resolveLLVMType(destType));
+        }
+    } else if (name == "extend") {
+        if (Args.size() != 2 || !std::holds_alternative<BabelType>(Args[0]) || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[1]))
+            babel_panic("@extend requires destination type and source value arguments");
+
+        auto destType = std::get<BabelType>(Args[0]);
+        auto srcVal = std::move(std::get<std::unique_ptr<BaseAST>>(Args[1]));
+        auto srcType = srcVal->getType();
+
+        if (destType.getBasic() <= srcType.getBasic())
+            babel_panic("destination of truncating cast must be greater than its source");
+        
+        if (isBabelInteger(srcType) && isBabelInteger(destType)) {
+            // in the future also support to unsigned
+            return Builder->CreateSExt(srcVal->codegen(), resolveLLVMType(destType));
+        } else if (isBabelFloat(srcType) && isBabelFloat(destType)) {
+            return Builder->CreateFPExt(srcVal->codegen(), resolveLLVMType(destType));
+        } else {
+            // in the future also support to unsigned
+            return Builder->CreateSIToFP(srcVal->codegen(), resolveLLVMType(destType));
+        }
+    } else if (name == "ptrToInt") {
+        if (Args.size() != 1 || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[0]) || !std::get<std::unique_ptr<BaseAST>>(Args[0])->getType().isPointer())
+            babel_panic("@ptrToInt requires pointer argument");
+        
+        return Builder->CreatePtrToInt(std::get<std::unique_ptr<BaseAST>>(Args[0])->codegen(), llvm::Type::getInt64Ty(*TheContext));
+    } else if (name == "intToPtr") {
+        if (Args.size() != 2 || !std::holds_alternative<BabelType>(Args[0]) || !std::get<BabelType>(Args[0]).isPointer()
+            || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[1]) || !isBabelInteger(std::get<std::unique_ptr<BaseAST>>(Args[1])->getType())
+        )
+            babel_panic("@intToPtr requires destination pointer type and integer arguments");
+
+        return Builder->CreateIntToPtr(std::get<std::unique_ptr<BaseAST>>(Args[1])->codegen(), resolveLLVMType(std::get<BabelType>(Args[0])));
+    } else if (name == "ptrCast") {
+        if (Args.size() != 2 || !std::holds_alternative<BabelType>(Args[0]) || !std::get<BabelType>(Args[0]).isPointer() || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[1]))
+            babel_panic("@ptrCast requires pointer destination type and source value arguments");
+
+        auto destType = std::get<BabelType>(Args[0]);
+        auto srcVal = std::move(std::get<std::unique_ptr<BaseAST>>(Args[1]));
+
+        return Builder->CreatePointerCast(srcVal->codegen(), resolveLLVMType(destType));
+    } else if (name == "bitcast") {
+        if (Args.size() != 2 || !std::holds_alternative<BabelType>(Args[0]) || !std::holds_alternative<std::unique_ptr<BaseAST>>(Args[1]))
+            babel_panic("@bitcast requires destination type and source value arguments");
+
+        auto destType = std::get<BabelType>(Args[0]);
+        auto srcVal = std::move(std::get<std::unique_ptr<BaseAST>>(Args[1]));
+        auto srcType = srcVal->getType();
+
+        if (srcType.isPointer() && destType.isPointer())
+            babel_panic("use @ptrCast instead");
+
+        if (srcType.isPointer() && isBabelInteger(destType))
+            babel_panic("use @ptrToInt instead");
+        
+        if (isBabelInteger(srcType) && destType.isPointer())
+            babel_panic("use @intToPtr instead");
+        
+        return Builder->CreateBitCast(srcVal->codegen(), resolveLLVMType(destType));
     } else {
         babel_panic("No macro with name @%s exists", name.c_str());
     }

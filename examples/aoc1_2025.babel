@@ -8,23 +8,23 @@
 \\ fopen, fscanf and fclose all use a FILE*, where FILE is a struct
 \\ We don't have the FILE struct since it comes from C
 \\ Therefore we use a *void as an opaque pointer
-extern task fopen(cstr, cstr) => *void
-extern task fscanf(*void, cstr, ...) => int
-extern task fclose(*void) => void
-extern task printf(cstr, int) => void
+extern task fopen(Cstr, Cstr) => *Void
+extern task fscanf(*Void, Cstr, ...) => Int
+extern task fclose(*Void) => Void
+extern task printf(Cstr, Int) => Void
 
 \\ This is the first "real" problem we solve to show what Babel is capable of
 \\ Not just a small "Hello World" program or fibonacci speed test
 \\ It is the first day problem from the advent of code 2025
-task first_puzzle() => void do
+task first_puzzle() => Void do
     \\ The real puzzle input is way larger than the one in input.txt
     \\ But I don't want to bloat the repo with a ~15kB file only for demonstration
     let fptr = fopen(c"input.txt", c"r")
 
     \\ Currently there is no undefined to initialize with
     \\ So we store some arbitrary data
-    let direction: char = 'L'
-    let distance: int = 0
+    let direction: Char = 'L'
+    let distance: Int = 0
 
     \\ Actually there is no need to provide the type annotations
     \\ The compiler will figure it out automatically

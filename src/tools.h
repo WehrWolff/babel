@@ -315,7 +315,7 @@ static const llvm::fltSemantics& fpSemanticsFromSuffix(char suffix) {
         case 'F': case 'f': return llvm::APFloatBase::IEEEsingle();
         case 'D': case 'd': return llvm::APFloatBase::IEEEdouble();
         case 'Q': case 'q': return llvm::APFloatBase::IEEEquad();
-        default:            return llvm::APFloatBase::IEEEsingle();
+        default:            return llvm::APFloatBase::IEEEdouble();
     }
 }
 
@@ -325,7 +325,7 @@ BabelType fpTypeFromSuffix(char suffix) {
         case 'F': case 'f': return BabelType::Float32();
         case 'D': case 'd': return BabelType::Float64();
         case 'Q': case 'q': return BabelType::Float128();
-        default:            return BabelType::Float32();
+        default:            return BabelType::Double();
     }
 }
 

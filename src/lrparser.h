@@ -632,7 +632,7 @@ public:
     std::variant<TreeNode, std::string> parse(std::vector<Token> tokens) const {
         tokens.emplace_back("$", "$");
         std::stack<TreeNode> nodeStack;
-        std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>> reducedNodes;
+        std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>, Symbol>> reducedNodes;
         std::stack<int> stateStack;
         stateStack.push(0);
         int tokenIndex = 0;

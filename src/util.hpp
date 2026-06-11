@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <functional>
 #include <string>
+#include <memory>
 
 BABEL_PRINTF_FORMAT(1, 2) BABEL_COLD BABEL_NORETURN void babel_panic(const char *format, ...) {
     va_list ap;
@@ -40,5 +41,16 @@ struct TransparentStringHash {
         return std::hash<std::string_view>{}(str);
     }
 };
+
+template <typename To, typename From> 
+std::unique_ptr<To> dynamic_unique_cast(std::unique_ptr<From>&& p) {
+    if (To* cast = dynamic_cast<To*>(p.get()))
+    {
+        std::unique_ptr<To> result(cast);
+        p.release();
+        return result;
+    }
+    throw std::bad_cast();
+}
 
 #endif /* UTIL_HPP */

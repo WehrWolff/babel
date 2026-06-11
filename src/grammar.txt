@@ -76,15 +76,21 @@ assignment_operator : EQUALS
 
 type_spec           : COLON type
 
-type                : TYPE
+type                : IDENTIFIER
                     | IDENTIFIER LT generic_list GT
+                    | IDENTIFIER LT IDENTIFIER LT generic_list RSHIFT
+                    | IDENTIFIER LT generic_list COMMA IDENTIFIER LT generic_list RSHIFT
+                    | IDENTIFIER LT IDENTIFIER LT IDENTIFIER LT generic_list LRSHIFT
+                    | IDENTIFIER LT generic_list COMMA IDENTIFIER LT IDENTIFIER LT generic_list LRSHIFT
+                    | IDENTIFIER LT IDENTIFIER LT generic_list COMMA IDENTIFIER LT generic_list LRSHIFT
+                    | IDENTIFIER LT generic_list COMMA IDENTIFIER LT generic_list COMMA IDENTIFIER LT generic_list LRSHIFT
                     | MULTIPLY CONST type
                     | DEREF CONST type
                     | MULTIPLY type
                     | DEREF type
 
 generic             : type
-                    | atom
+                    | literal
 
 generic_list        : generic 
                     | generic COMMA generic_list
@@ -108,13 +114,13 @@ type_signature      : type
                     | VARARG
                     | type COMMA type_signature
 
-task_header         : TASK IDENTIFIER LPAREN RPAREN RARR type DO
-                    | TASK IDENTIFIER LPAREN args RPAREN RARR type DO
+task_header         : TASK IDENTIFIER LPAREN RPAREN RARR type
+                    | TASK IDENTIFIER LPAREN args RPAREN RARR type
 
 extern_task         : EXTERN TASK IDENTIFIER LPAREN type_signature RPAREN RARR type
                     | EXTERN TASK IDENTIFIER LPAREN RPAREN RARR type
 
-task_def            : task_header block END
+task_def            : task_header DO block END
                     | extern_task
 
 task_def_list       : task_def
@@ -245,8 +251,14 @@ primary             : atom
                     | class_construction
                     | LPAREN expression RPAREN
 
+macro_param         : type
+                    | expression
+
+macro_params        : macro_param
+                    | macro_param COMMA macro_params
+
 macro_call          : AT IDENTIFIER
-                    | AT IDENTIFIER LPAREN generic_list RPAREN
+                    | AT IDENTIFIER LPAREN macro_params RPAREN
 
 function_call       : IDENTIFIER LPAREN RPAREN
                     | IDENTIFIER LPAREN params RPAREN
@@ -260,18 +272,16 @@ param               : IDENTIFIER EQUALS expression
 params              : param COMMA params
                     | param
 
-atom                : STRING
+atom                : literal
+                    | IDENTIFIER
+
+literal             : STRING
                     | CSTRING
                     | CHAR
                     | BOOL
                     | INTEGER
                     | FLOATING_POINT
                     | NULL
-                    | IDENTIFIER
-                    | list
-                    | tuple
-                    | set
-                    | map
 
 comma_values        : expression
                     | expression COMMA comma_values

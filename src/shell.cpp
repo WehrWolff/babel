@@ -50,7 +50,6 @@ Parser loadParserData(const std::filesystem::path& project_root) {
 
 Lexer setupModuleAndLexer(const std::string& file_name) {
     auto lexer = Lexer(file_name, {
-        {"TYPE", "\\b(?:int|int8|int16|int32|int64|int128|float|float16|float32|float64|float128|bool|string|cstr|char|list|tuple|map|dict|any|void)\\b"},
         {"CLASS", "\\bclass\\b"},
         {"EXTERN", "\\bextern\\b"},
         {"TASK", "\\btask\\b"},

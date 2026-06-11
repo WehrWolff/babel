@@ -128,7 +128,7 @@ class Lexer {
             auto subv = std::ranges::unique(tokens, [](const Token& a, const Token& b) { return a.getType() == "NEWLINE" && b.getType() == "NEWLINE"; });
             tokens.erase(subv.begin(), tokens.end());
 
-            for (size_t i = 1; i < tokens.size() - 1; ++i) {
+            for (size_t i = 1; i + 1 < tokens.size(); ++i) {
                 if (tokens[i].getType() == "NEWLINE" && isStmtEnding(tokens[i-1].getType()) && !isContinuation(tokens[i+1].getType())) {
                     tokens[i] = Token("SEMICOLON", ";");
                 } else if (tokens[i].getType() == "END" && isStmtEnding(tokens[i-1].getType())) {
