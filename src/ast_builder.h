@@ -107,7 +107,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
 
         //std::get<std::unique_ptr<BaseAST>>(node)->codegen()->print(llvm::errs());
         //fprintf(stderr, "\n");
-    } else if (type == "sum" || type == "term" || type == "shift_expression" || type == "bitwise_and" || type == "bitwise_or" || type == "bitwise_xor" || type == "contravalence") {
+    } else if (type == "sum" || type == "term" || type == "exponentiation" || type == "shift_expression" || type == "bitwise_and" || type == "bitwise_or" || type == "bitwise_xor") {
         std::unique_ptr<BaseAST> rhs = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
         TreeNode op = std::get<TreeNode>(nodeStack.top()); nodeStack.pop();
         std::unique_ptr<BaseAST> lhs = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
@@ -159,7 +159,7 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>>>& nod
             std::unique_ptr<BaseAST> container = std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top())); nodeStack.pop();
 
             node = std::make_unique<AccessElementOperatorAST>(std::move(container), std::move(index));
-        } else if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "MULTIPLY") {
+        } else if (std::holds_alternative<TreeNode>(nodeStack.top()) && std::get<TreeNode>(nodeStack.top()).name == "DEREF") {
             nodeStack.pop();
             node = std::make_unique<DereferenceOperatorAST>(std::move(std::get<std::unique_ptr<BaseAST>>(nodeStack.top()))); nodeStack.pop();
         } else {

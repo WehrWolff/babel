@@ -382,9 +382,10 @@ enum class OpKind {
     PostPtrDec
 };
 
-OpKind getOperation(std::string_view op, BabelType left, BabelType right) {
+OpKind getOperation(std::string_view op, const BabelType& left, const BabelType& right) {
     bool isFloatCompatible = (isBabelFloat(left) && isBabelFloat(right)) || (isBabelFloat(left) && isBabelInteger(right)) || (isBabelInteger(left) && isBabelFloat(right));
     bool isPointerArithmetic = (left.isPointer() && isBabelInteger(right)) || (isBabelInteger(left) && right.isPointer());
+    bool comparesLikeInt = (left == BabelType::Character() && right == BabelType::Character()) || (left == BabelType::Boolean() && right == BabelType::Boolean());
 
     if (op == "+") {
         if (isBabelInteger(left) && isBabelInteger(right))
@@ -443,10 +444,10 @@ OpKind getOperation(std::string_view op, BabelType left, BabelType right) {
     } else if (op == "&") {
         if (isBabelInteger(left) && isBabelInteger(right))
             return OpKind::BitAnd;
-    } else if (op == "^" || op == "^^") {
+    } else if (op == "><") {
         if (isBabelInteger(left) && isBabelInteger(right))
             return OpKind::BitXor;
-    } else if (op == "**") {
+    } else if (op == "^") {
         if (isBabelInteger(left) && isBabelInteger(right))
             return OpKind::PowerInt;
         
@@ -456,37 +457,37 @@ OpKind getOperation(std::string_view op, BabelType left, BabelType right) {
         if (isFloatCompatible)
             return OpKind::PowerFloat;
     } else if (op == "==") {
-        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())) || comparesLikeInt)
             return OpKind::EqInt;
         
         if (isFloatCompatible)
             return OpKind::EqFloat;
     } else if (op == "!=") {
-        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())) || comparesLikeInt)
             return OpKind::NeInt;
         
         if (isFloatCompatible)
             return OpKind::NeFloat;
     } else if (op == "<") {
-        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())) || comparesLikeInt)
             return OpKind::LtInt;
         
         if (isFloatCompatible)
             return OpKind::LtFloat;
     } else if (op == "<=") {
-        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())) || comparesLikeInt)
             return OpKind::LeInt;
         
         if (isFloatCompatible)
             return OpKind::LeFloat;
     } else if (op == ">") {
-        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())) || comparesLikeInt)
             return OpKind::GtInt;
         
         if (isFloatCompatible)
             return OpKind::GtFloat;
     } else if (op == ">=") {
-        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())))
+        if ((isBabelInteger(left) && isBabelInteger(right)) || (left.isPointer() && right.isPointer() && areComparablePointers(left.getPointer(), right.getPointer())) || comparesLikeInt)
             return OpKind::GeInt;
         
         if (isFloatCompatible)
@@ -522,7 +523,7 @@ OpKind getOperation(std::string_view op, BabelType ty) {
         if (isBabelFloat(ty))
             return OpKind::FNeg;
     } else if (op == "+") {
-        if (isBabelInteger(ty) && isBabelFloat(ty))
+        if (isBabelInteger(ty) || isBabelFloat(ty))
             return OpKind::Id;
     } else if (op == "pre++") {
         if (isBabelInteger(ty))

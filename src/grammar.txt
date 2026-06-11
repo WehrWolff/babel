@@ -48,8 +48,8 @@ import_stmt         : IMPORT comma_values
 
 element_assignment  : VAR LSQUARE expression RSQUARE assignment_operator expression
 
-chained_indirection : MULTIPLY
-                    | MULTIPLY chained_indirection
+chained_indirection : DEREF
+                    | DEREF chained_indirection
 
 indirect_assignment : VAR chained_indirection assignment_operator expression
 
@@ -69,6 +69,7 @@ assignment_operator : EQUALS
                     | INTEGER_DIVIDE_EQUALS
                     | LSHIFT_EQUALS
                     | RSHIFT_EQUALS
+                    | LRSHIFT_EQUALS
                     | BIT_OR_EQUALS
                     | BIT_AND_EQUALS
                     | BIT_XOR_EQUALS
@@ -78,7 +79,9 @@ type_spec           : COLON type
 type                : TYPE
                     | VAR LT generic_list GT
                     | MULTIPLY CONST type
+                    | DEREF CONST type
                     | MULTIPLY type
+                    | DEREF type
 
 generic             : type
                     | atom
@@ -164,14 +167,11 @@ catch_blocks        : CATCH VAR block
 
 expression          : disjunction
 
-disjunction         : contravalence or_chain
-                    | contravalence
+disjunction         : conjunction or_chain
+                    | conjunction
 
-or_chain            : OR contravalence or_chain
-                    | OR contravalence
-
-contravalence       : conjunction
-                    | conjunction XOR contravalence
+or_chain            : OR conjunction or_chain
+                    | OR conjunction
 
 conjunction         : inversion and_chain
                     | inversion
@@ -206,6 +206,7 @@ bitwise_and         : bitwise_and BIT_AND shift_expression
 
 shift_expression    : shift_expression LSHIFT sum
                     | shift_expression RSHIFT sum
+                    | shift_expression LRSHIFT sum
                     | sum
 
 sum                 : sum PLUS term
@@ -233,7 +234,7 @@ postfix             : postfix DOT VAR
                     | postfix DOT VAR LPAREN RPAREN
                     | postfix DOT VAR LPAREN params RPAREN
                     | postfix LSQUARE expression RSQUARE
-                    | postfix MULTIPLY
+                    | postfix DEREF
                     | postfix INCREMENT
                     | postfix DECREMENT
                     | primary

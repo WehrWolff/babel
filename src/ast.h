@@ -208,8 +208,9 @@ class FloatingPointAST : public BaseAST {
                 char suffix = s.back();
                 s.back() = iSuffix.at(fSuffix.find(static_cast<char>(toupper(suffix))));
 
-                auto Int = IntegerAST(s);
-                Val = llvm::APFloat(fpSemanticsFromSuffix(suffix), Int.Val);
+                llvm::APInt bits = IntegerAST(s).Val;
+                Val = llvm::APFloat(fpSemanticsFromSuffix(suffix), bits);
+                Val.convertFromAPInt(bits, true, llvm::APFloat::rmNearestTiesToEven);
                 Type = fpTypeFromSuffix(suffix);
             } else {
                 if (isHexFloat && s.find_first_of("Pp") == std::string::npos)
@@ -293,22 +294,22 @@ class DereferenceOperatorAST : public BaseAST {
 };
 
 class AddressOfOperatorAST : public BaseAST {
-    std::unique_ptr<VariableAST> Var;
     const BabelType To;
+    std::unique_ptr<BaseAST> Val;
 
     public:
-        explicit AddressOfOperatorAST(std::unique_ptr<BaseAST> _Var) : To(_Var->getType()) {
-            BaseAST* const stored_ptr = _Var.release();
-            Var = std::unique_ptr<VariableAST>(dynamic_cast<VariableAST*>(stored_ptr));
-            if (!Var) {
-                _Var.reset(stored_ptr);
-                babel_panic("Cannot create pointer from non-variable");
+        explicit AddressOfOperatorAST(std::unique_ptr<BaseAST> _Val) : Val(std::move(_Val)) {
+            auto Arr = dynamic_cast<AccessElementOperatorAST*>(Val.get());
+            auto Var = dynamic_cast<VariableAST*>(Val.get());
+
+            if (!Var && !Arr) {
+                babel_panic("Cannot get address of temporary");
             }
         }
         llvm::Value *codegen() override;
         llvm::Constant *codegenComptime() override { assert(isComptimeAssignable()); return llvm::cast<llvm::Constant>(codegen()); }
         BabelType getType() const override { return BabelType::Pointer(&To, Var->getConstness()); }
-        bool isComptimeAssignable() const override { return Var->isComptimeAssignable(); }
+        bool isComptimeAssignable() const override { return Val->isComptimeAssignable(); }
 };
 
 class ComparisonChainAST : public BaseAST {
@@ -331,7 +332,7 @@ class BinaryOperatorAST : public BaseAST {
     std::unique_ptr<BaseAST> RHS;
 
     public:
-        BinaryOperatorAST(const std::string& Op, std::unique_ptr<BaseAST> LHS, std::unique_ptr<BaseAST> RHS) : Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
+        BinaryOperatorAST(const std::string& Op, std::unique_ptr<BaseAST> LHS, std::unique_ptr<BaseAST> RHS) : Op(boost::trim_copy(Op)), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
         llvm::Value *codegen() override;
         llvm::Constant* codegenComptime() override { assert(isComptimeAssignable()); return llvm::cast<llvm::Constant>(codegen()); }
         BabelType getType() const override;
@@ -479,7 +480,7 @@ class TaskHeaderAST : public BaseAST {
     bool isVarArg;
 
     public:
-        TaskHeaderAST(const std::string &Name, std::deque<std::string> Args, std::deque<BabelType> ArgTypes, BabelType ReturnType, bool isVarArg) : Name(Name), Args(std::move(Args)), ArgTypes(std::move(ArgTypes)), ReturnType(ReturnType), isVarArg(isVarArg) {
+        TaskHeaderAST(const std::string &Name, std::deque<std::string> _Args, std::deque<BabelType> ArgTypes, BabelType ReturnType, bool isVarArg) : Name(Name), Args(std::move(_Args)), ArgTypes(std::move(ArgTypes)), ReturnType(ReturnType), isVarArg(isVarArg) {
             TaskTable[Name] = {this->ArgTypes, ReturnType, isVarArg};
             PolymorphTable[Name] = PolymorphTable.contains(Name);
 
@@ -785,7 +786,6 @@ llvm::Value *shortCircuit(const std::deque<std::unique_ptr<BaseAST>>& ops, bool 
     Builder->CreateBr(EndBB);
 
     Builder->SetInsertPoint(EndBB);
-    // llvm::PHINode *phi = llvm::PHINode::Create(llvm::Type::getInt1Ty(*TheContext), static_cast<unsigned>(blocks.size()));
     llvm::PHINode* phi = Builder->CreatePHI(llvm::Type::getInt1Ty(*TheContext), static_cast<unsigned>(blocks.size()));
 
     for (const auto& block : blocks | std::views::take(blocks.size() - 1)) {
@@ -803,7 +803,7 @@ llvm::Value *cmpHelper(OpKind op, llvm::Value *lhs, llvm::Value *rhs) {
         case EqInt:
             return Builder->CreateICmpEQ(lhs, rhs, "eqtmp");
         case EqFloat:
-            return Builder->CreateFCmpUEQ(lhs, rhs, "eqtmp");
+            return Builder->CreateFCmpOEQ(lhs, rhs, "eqtmp");
         case NeInt:
             return Builder->CreateICmpNE(lhs, rhs, "netmp");
         case NeFloat:
@@ -811,19 +811,19 @@ llvm::Value *cmpHelper(OpKind op, llvm::Value *lhs, llvm::Value *rhs) {
         case LtInt:
             return Builder->CreateICmpSLT(lhs, rhs, "lttmp");
         case LtFloat:
-            return Builder->CreateFCmpULT(lhs, rhs, "lttmp");
+            return Builder->CreateFCmpOLT(lhs, rhs, "lttmp");
         case LeInt:
             return Builder->CreateICmpSLE(lhs, rhs, "letmp");
         case LeFloat:
-            return Builder->CreateFCmpULE(lhs, rhs, "letmp");
+            return Builder->CreateFCmpOLE(lhs, rhs, "letmp");
         case GtInt:
             return Builder->CreateICmpSGT(lhs, rhs, "gttmp");
         case GtFloat:
-            return Builder->CreateFCmpUGT(lhs, rhs, "gttmp");
+            return Builder->CreateFCmpOGT(lhs, rhs, "gttmp");
         case GeInt:
             return Builder->CreateICmpSGE(lhs, rhs, "getmp");
         case GeFloat:
-            return Builder->CreateFCmpUGE(lhs, rhs, "getmp");
+            return Builder->CreateFCmpOGE(lhs, rhs, "getmp");
         
         default:
             babel_unreachable();
@@ -879,6 +879,7 @@ llvm::Value *ComparisonChainAST::codegen() {
 }
 
 llvm::Function *getOrCreate_ipow(llvm::Type* ty) {
+    // TODO: requires bugfix in the future
     std::string name = std::format("babel.ipow.i{}.i{}", ty->getIntegerBitWidth(), ty->getIntegerBitWidth());
 
     llvm::Function* F = TheModule->getFunction(name);
@@ -1123,22 +1124,22 @@ llvm::Value *UnaryOperatorAST::codegen() {
             return operand;
         }
         case PrePtrInc: {
-            llvm::Value* inc = Builder->CreateInBoundsGEP(resolveLLVMType(ty), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1)}, "ptrinc");
+            llvm::Value* inc = Builder->CreateInBoundsGEP(resolveLLVMType(*ty.getPointer().to), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1)}, "ptrinc");
             Builder->CreateStore(inc, Val->requireLValue());
             return inc;
         }
         case PrePtrDec: {
-            llvm::Value* dec = Builder->CreateInBoundsGEP(resolveLLVMType(ty), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), -1)}, "ptrdec");
+            llvm::Value* dec = Builder->CreateInBoundsGEP(resolveLLVMType(*ty.getPointer().to), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), -1)}, "ptrdec");
             Builder->CreateStore(dec, Val->requireLValue());
             return dec;
         }
         case PostPtrInc: {
-            llvm::Value* inc = Builder->CreateInBoundsGEP(resolveLLVMType(ty), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1)}, "ptrinc");
+            llvm::Value* inc = Builder->CreateInBoundsGEP(resolveLLVMType(*ty.getPointer().to), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1)}, "ptrinc");
             Builder->CreateStore(inc, Val->requireLValue());
             return operand;
         }
         case PostPtrDec: {
-            llvm::Value* dec = Builder->CreateInBoundsGEP(resolveLLVMType(ty), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), -1)}, "ptrdec");
+            llvm::Value* dec = Builder->CreateInBoundsGEP(resolveLLVMType(*ty.getPointer().to), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), -1)}, "ptrdec");
             Builder->CreateStore(dec, Val->requireLValue());
             return operand;
         }
@@ -1185,7 +1186,7 @@ llvm::Value *DereferenceOperatorAST::codegen() {
 }
 
 llvm::Value *AddressOfOperatorAST::codegen() {
-    return Var->requireLValue();
+    return Val->requireLValue();
 }
 
 llvm::Value *ContinueStmtAST::codegen() {
@@ -1305,31 +1306,48 @@ llvm::Value *IfStmtAST::codegen() {
     llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(*TheContext, "then", TheFunction);
     llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(*TheContext, "else");
     llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*TheContext, "ifcont");
+    bool requiresMerge = false;
 
+    if (!Else) {
+        requiresMerge = true;
+        Builder->CreateCondBr(CondV, ThenBB, MergeBB);
+    } else {
     Builder->CreateCondBr(CondV, ThenBB, ElseBB);
+    }
 
     // then block
     Builder->SetInsertPoint(ThenBB);
     Then->codegen();
-    /* if (!Then->codegen())
-        return nullptr; */
 
+    // TODO: update to hasTerminator in llvm 22
+    if (!ThenBB->getTerminator()) {
+        requiresMerge = true;
     Builder->CreateBr(MergeBB);
-    ThenBB = Builder->GetInsertBlock();
+    }
 
     // else block
+    if (Else) {
     TheFunction->insert(TheFunction->end(), ElseBB);
     Builder->SetInsertPoint(ElseBB);
-    if (Else && !Else->codegen()) // panic instead
-        return nullptr;
+        Else->codegen();
+        if (!ElseBB->getTerminator()) {
+            requiresMerge = true;
+            Builder->CreateBr(MergeBB);
+        }
+    }
 
+    // in case of elif chain, if the current block has no terminator we have to merge back further
+    if (!Builder->GetInsertBlock()->getTerminator()) {
+        requiresMerge = true;
     Builder->CreateBr(MergeBB);
-    ElseBB = Builder->GetInsertBlock();
+    }
 
+    if (requiresMerge) {
     TheFunction->insert(TheFunction->end(), MergeBB);
     Builder->SetInsertPoint(MergeBB);
+    }
 
-    return nullptr; //llvm::Constant::getNullValue(llvm::Type::getVoidTy(*TheContext));
+    return nullptr;
 }
 
 llvm::Value *WhileLoopAST::codegen() {
@@ -1693,7 +1711,7 @@ llvm::Value *TaskCallAST::codegen() {
     std::vector<llvm::Value *> ArgsV;
     for (unsigned int i = 0, e = Args.size(); i != e; ++i) {
         llvm::Value *val = Args[i]->codegen();
-        if (canImplicitCast(Args[i]->getType(), TaskTable.at(callsTo).args[i]))
+        if (CalleF->arg_size() < i && canImplicitCast(Args[i]->getType(), TaskTable.at(callsTo).args[i]))
             val = performImplicitCast(val, Args[i]->getType(), TaskTable.at(callsTo).args[i]);
         
         ArgsV.push_back(val);

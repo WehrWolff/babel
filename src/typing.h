@@ -292,12 +292,22 @@ bool areComparablePointers(PointerType lhs, PointerType rhs) {
     if (lhs.to->isPointer() && rhs.to->isPointer())
         return areComparablePointers(lhs.to->getPointer(), rhs.to->getPointer());
     
-    return false;
+    return *lhs.to == *rhs.to;
 }
 
 bool canImplicitCast(BabelType from, BabelType to) {
     if (from == to)
         return true;
+
+    if (from.isPointer() && to.isPointer()) {
+        auto preserves_const = [](BabelType from, BabelType to){ return from.getPointer().pointsToConst <= to.getPointer().pointsToConst; };
+
+        if (from.getPointer().to->isPointer() && to.getPointer().to->isPointer()) {
+            return preserves_const(from, to) && canImplicitCast(*from.getPointer().to, *to.getPointer().to);
+        } else {
+            return preserves_const(from, to) && *from.getPointer().to == *to.getPointer().to;
+        }
+    }
 
     std::unordered_map<BabelType, std::vector<BabelType>> ImplicitCastTable = {
         {BabelType::Int8(), {BabelType::Int16(), BabelType::Int32(), BabelType::Int64(), BabelType::Int128(), BabelType::Float16(), BabelType::Float32(), BabelType::Float64(), BabelType::Float128()}},
@@ -316,6 +326,9 @@ bool canImplicitCast(BabelType from, BabelType to) {
 
 llvm::Value *performImplicitCast(llvm::Value *val, BabelType from, BabelType to) {
     if (from == to)
+        return val;
+
+    if (from.isPointer() && to.isPointer())
         return val;
 
     if (isBabelInteger(from) && isBabelInteger(to)) {

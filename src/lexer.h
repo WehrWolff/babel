@@ -32,6 +32,7 @@ public:
     }
 
     Token& operator=(const Token& tok) = default;
+    bool operator==(const Token& that) const = default;
 };
 
 class Position {
@@ -128,24 +129,26 @@ class Lexer {
             tokens.erase(subv.begin(), tokens.end());
 
             for (size_t i = 1; i < tokens.size() - 1; ++i) {
-                if (tokens[i].getType() == "NEWLINE" && isLineTerminating(tokens[i-1].getType()) && !isContinuation(tokens[i+1].getType())) {
+                if (tokens[i].getType() == "NEWLINE" && isStmtEnding(tokens[i-1].getType()) && !isContinuation(tokens[i+1].getType())) {
                     tokens[i] = Token("SEMICOLON", ";");
+                } else if (tokens[i].getType() == "END" && isStmtEnding(tokens[i-1].getType())) {
+                    tokens.emplace(tokens.begin() + i, "SEMICOLON", ";");
                 }
             }
 
             std::erase_if(tokens, [](const Token& tok){ return tok.getType() == "NEWLINE"; });
 
-            if (tokens.back().getType() != "SEMICOLON")
+            if (!tokens.empty() && tokens.back().getType() != "SEMICOLON")
                 tokens.emplace_back("SEMICOLON", ";");
 
             return tokens;
         }
 
-        static bool isLineTerminating(std::string_view type) {
+        static bool isStmtEnding(std::string_view type) {
             return type == "VAR" || type == "TYPE" || 
                     type == "INTEGER" || type == "FLOATING_POINT" || type == "CHAR" || type == "STRING" || type == "BOOL" || type == "NULL" ||
                     type == "BREAK" || type == "CONTINUE" || type == "RETURN" || type == "NOOP" || type == "FALLTHROUGH" || type ==  "END" ||
-                    type == "INCREMENT" || type == "DECREMENT" || type == "RPAREN" || type == "RBRACE";
+                    type == "INCREMENT" || type == "DECREMENT" || type == "RPAREN" || type == "RSQUARE" || type == "RBRACE";
         }
         
         static bool isContinuation(std::string_view type) {

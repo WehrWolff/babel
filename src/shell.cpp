@@ -18,6 +18,13 @@ void run(const Lexer& lexer, const Parser& parser, const std::string& text) {
     std::vector<Token> tokens = lexer.tokenize(text);
     Lexer::handleComments(tokens);
     Lexer::insertSemicolons(tokens);
+
+    if (tokens.empty()) {
+        tokens.emplace_back("NOOP", "noop");
+        tokens.emplace_back("SEMICOLON", ";");
+        std::cout << "warning: program is empty\n";
+    }
+
     std::cout << tokens << std::endl;
     // std::visit([](const auto& value) { /* std::cout << value << std::endl; */ }, parser.parse(tokens));
     std::variant<TreeNode, std::string> out = parser.parse(tokens);
@@ -95,15 +102,16 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"MINUS_EQUALS", "-="},
         {"MULTIPLY_EQUALS", "\\*="},
         {"DIVIDE_EQUALS", "/="},
-        {"POWER_EQUALS", "\\*\\*="},
+        {"POWER_EQUALS", "\\^="},
         {"MODULO_EQUALS", "%="},
         {"INTEGER_DIVIDE_EQUALS", "//="},
         {"LSHIFT_EQUALS", "<<="},
         {"RSHIFT_EQUALS", ">>="},
+        {"LRSHIFT_EQUALS", ">>>="},
         {"BIT_OR_EQUALS", "\\|="},
         {"BIT_AND_EQUALS", "&="},
-        {"BIT_XOR_EQUALS", "\\^="},
-        {"NEGLIGIBLY_LOW", "<<<"},
+        {"BIT_XOR_EQUALS", "\\><="},
+        {"LRSHIFT", ">>>"},
         {"LSHIFT", "<<"},
         {"RSHIFT", ">>"},
         {"LTEQ", "<="},
@@ -113,19 +121,19 @@ Lexer setupModuleAndLexer(const std::string& file_name) {
         {"INTEGER_DIVIDE", "//"},
         {"INCREMENT", "\\+\\+"},
         {"DECREMENT", "--"},
+        {"DEREF", "\\*"},
         {"PLUS", "\\+"},
         {"MINUS", "-"},
-        {"MULTIPLY", "\\*"},
+        {"MULTIPLY", " \\*"}, // notice the whitespace
         {"DIVIDE", "/"},
-        {"POWER", "\\*\\*"},
+        {"POWER", "\\^"},
         {"MODULO", "%"},
         {"EQUALS", "="},
         {"OR", "\\|\\|"},
-        {"XOR", "\\^\\^"},
         {"AND", "&&"},
         {"BIT_NOT", "~"},
         {"BIT_OR", "\\|"},
-        {"BIT_XOR", "\\^"},
+        {"BIT_XOR", "><"},
         {"BIT_AND", "&"},
         {"NOT", "!"},
         {"LT", "<"},
