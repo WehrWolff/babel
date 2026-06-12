@@ -34,7 +34,7 @@ jobs:
             c_compiler: cl
             cpp_compiler: cl
             conan_compiler: msvc
-            compiler_version: 194
+            compiler_version: 195
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++

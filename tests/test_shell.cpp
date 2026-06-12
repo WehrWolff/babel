@@ -101,13 +101,11 @@ TEST(ParserTest, AnotherParse) {
 
 namespace SharedContext {
     inline std::unique_ptr<Parser> globalParser = nullptr;
-    inline std::unique_ptr<std::filesystem::path> g_projectRoot = nullptr;
     inline std::unique_ptr<std::filesystem::path> g_binPath = nullptr;
 
-    inline void init(const std::filesystem::path& root, const std::filesystem::path& bin) {
-        if (!globalParser && !g_projectRoot && !g_binPath) {
-            globalParser = std::make_unique<Parser>(loadParserData(root / "build"));
-            g_projectRoot = std::make_unique<std::filesystem::path>(root);
+    inline void init(const std::filesystem::path& bin) {
+        if (!globalParser && !g_binPath) {
+            globalParser = std::make_unique<Parser>(loadParserData());
             g_binPath = std::make_unique<std::filesystem::path>(bin);
         }
     }
@@ -132,8 +130,8 @@ void runBabelWorker(const std::filesystem::path& absolutePath) {
     run(lexer, *SharedContext::globalParser, content);
 
     std::error_code EC;
-    std::filesystem::path exePath(*SharedContext::g_projectRoot / absolutePath.stem().string().append("_babel"));
-    std::filesystem::path outPath(*SharedContext::g_projectRoot / absolutePath.stem().string().append(".ll"));
+    std::filesystem::path exePath(PROJECT_ROOT / absolutePath.stem().string().append("_babel"));
+    std::filesystem::path outPath(PROJECT_ROOT / absolutePath.stem().string().append(".ll"));
     llvm::raw_fd_ostream outFile(outPath.string(), EC);
     TheModule->print(outFile, nullptr);
 
@@ -143,9 +141,9 @@ void runBabelWorker(const std::filesystem::path& absolutePath) {
 
     int status = 0;
 
-    std::filesystem::path externPath(*SharedContext::g_projectRoot / "externs.o");
+    std::filesystem::path externPath(PROJECT_ROOT / "externs.o");
     if (!std::filesystem::exists(externPath)) {
-        status &= std::system(std::format("clang++ -c {} -o {}", (*SharedContext::g_projectRoot / "src" / "externs.cpp").string(), externPath.string()).c_str());
+        status &= std::system(std::format("clang++ -c {} -o {}", (PROJECT_ROOT / "src" / "externs.cpp").string(), externPath.string()).c_str());
     }
 
     status &= std::system(std::format("clang {} {} -o {}", outPath.string(), externPath.string(), exePath.string()).c_str());
@@ -260,13 +258,13 @@ void registerStrictDirectory(const std::string& suite, const std::string& name, 
     );
 }
 
-void registerStrictTests(std::filesystem::path const& projectRoot) {
-    auto dirs = findStrictDirectories(projectRoot);
+void registerStrictTests() {
+    auto dirs = findStrictDirectories(PROJECT_ROOT);
 
     for (const auto& relDir : dirs) {
         std::string name = relDir.generic_string();
         std::ranges::replace(name, '/', '.');
-        registerStrictDirectory("CompilationTest", name, projectRoot / relDir);
+        registerStrictDirectory("CompilationTest", name, PROJECT_ROOT / relDir);
     }
 }
 
@@ -275,12 +273,12 @@ class CorpusListener : public testing::EmptyTestEventListener {
     std::size_t totalFiles = 0;
 
     void runCorpusScan() {
-        if (!std::filesystem::exists(*SharedContext::g_projectRoot)) return;
+        if (!std::filesystem::exists(PROJECT_ROOT)) return;
 
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(*SharedContext::g_projectRoot)) {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(PROJECT_ROOT)) {
             if (!entry.is_regular_file() || entry.path().extension() != ".babel") continue;
 
-            auto rel = std::filesystem::relative(entry.path(), *SharedContext::g_projectRoot);
+            auto rel = std::filesystem::relative(entry.path(), PROJECT_ROOT);
             if (isStrict(rel)) continue;
 
             totalFiles++;
@@ -321,9 +319,7 @@ public:
 
 int main(int argc, char **argv) {
     auto binPath = std::filesystem::absolute(std::filesystem::path(argv[0]));
-    auto projectRoot = binPath.parent_path().parent_path();
-    
-    SharedContext::init(projectRoot, binPath);
+    SharedContext::init(binPath);
     
     // INTERCEPT: If this is an isolated subprocess invocation for a soft check
     if (argc >= 3 && std::string(argv[1]) == "--run-soft-file") {
@@ -337,7 +333,7 @@ int main(int argc, char **argv) {
     
     ::testing::InitGoogleTest(&argc, argv);
     // ::testing::FLAGS_gtest_death_test_style = "threadsafe";
-    registerStrictTests(projectRoot);
+    registerStrictTests();
 
     auto* corpusListener = new CorpusListener();
     testing::UnitTest::GetInstance()->listeners().Append(corpusListener);

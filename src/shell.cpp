@@ -14,6 +14,8 @@
 
 #include "tools.h"
 
+const std::filesystem::path PROJECT_ROOT = std::filesystem::absolute(std::filesystem::path(PROJECT_ROOT_STRING));
+
 void run(const Lexer& lexer, const Parser& parser, const std::string& text) {
     std::vector<Token> tokens = lexer.tokenize(text);
     Lexer::handleComments(tokens);
@@ -33,8 +35,8 @@ void run(const Lexer& lexer, const Parser& parser, const std::string& text) {
         std::cout << std::get<std::string>(out) << '\n';
 }
 
-Parser loadParserData(const std::filesystem::path& project_root) {
-    std::filesystem::path grammarPath = project_root / "build" / "grammar.txt";
+Parser loadParserData() {
+    std::filesystem::path grammarPath = PROJECT_ROOT / "src" / "grammar.txt";
     std::ifstream t(grammarPath);
     if (!t.is_open()) { std::cout << "Error opening file" << std::endl; }
     std::stringstream buffer;
@@ -171,8 +173,7 @@ int main(int argc, char* argv[]) {
 
     if (argc == 1) {
         Lexer lexer = setupModuleAndLexer("repl");
-        const std::filesystem::path ROOT_DIR = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path();
-        Parser parser = loadParserData(ROOT_DIR);
+        Parser parser = loadParserData();
 
         std::cout << R"( _____       _          _   |  Documentation: https://github.com/WehrWolff/babel/wiki)" << "\n";
         std::cout << R"(| ___ \     | |        | |  |                                                        )" << "\n";
@@ -199,8 +200,7 @@ int main(int argc, char* argv[]) {
         in.read(&content[0], size);
 
         Lexer lexer = setupModuleAndLexer(argv[1]);
-        const std::filesystem::path ROOT_DIR = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path();
-        Parser parser = loadParserData(ROOT_DIR);
+        Parser parser = loadParserData();
 
         run(lexer, parser, content);
 

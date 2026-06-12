@@ -9,6 +9,8 @@ set(BABEL_VERSION "${BABEL_VERSION_MAJOR}.${BABEL_VERSION_MINOR}.${BABEL_VERSION
 set(BABEL_VERSION_SPECIFIER "pre-alpha")
 set(BABEL_FULL_VERSION "${BABEL_VERSION_MAJOR}.${BABEL_VERSION_MINOR}.${BABEL_VERSION_PATCH}-${BABEL_VERSION_SPECIFIER}")
 
+set(PROJECT_ROOT_STRING "${CMAKE_CURRENT_LIST_DIR}")
+
 set(STOP_ON_CONF OFF CACHE BOOL "Stop after config.h was generated")
 
 configure_file (
@@ -42,6 +44,14 @@ target_link_libraries(babel PRIVATE ${Boost_LIBRARIES} ${LLVM_LIBRARIES})
 target_include_directories(babel PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(babel PRIVATE ${LLVM_DEFINITIONS})
 
+# we would prefer to use the #embed directive, but until its more widely adopted we use this
+target_compile_definitions(babel PRIVATE PROJECT_ROOT_STRING="${CMAKE_CURRENT_LIST_DIR}")
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    target_compile_options(babel PRIVATE /W4 /WX /permissive-)
+else()
+    target_compile_options(babel PRIVATE -Wall -Werror -Wpedantic)
+endif()
 
 # ----- Testing Configuration -----
 
@@ -56,6 +66,9 @@ add_executable(babel_tests ${TEST_FILES})
 target_include_directories(babel_tests PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(babel_tests PRIVATE GTest::GTest GTest::Main)
 target_link_libraries(babel_tests PRIVATE ${Boost_LIBRARIES} ${LLVM_LIBRARIES})
+
+# we would prefer to use the #embed directive, but until its more widely adopted we use this
+target_compile_definitions(babel_tests PRIVATE PROJECT_ROOT_STRING="${CMAKE_CURRENT_LIST_DIR}")
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage -g")
