@@ -59,7 +59,7 @@ std::ostream& operator<<(std::ostream& os, const Container& container) {
 template <typename T, ContainerOf<T> Container>
 int indexOf(const T& element, const Container& container) {
     if (auto it = std::ranges::find(container, element); it != container.end()) {
-        return std::distance(container.begin(), it);
+        return  static_cast<int>(std::distance(container.begin(), it));
     }
 
     return -1;
@@ -133,21 +133,8 @@ bool addUnique(T elmnt, Container& container) {
 }
 
 template <Container Container>
-std::vector<typename Container::value_type> slice(const Container& in, int start = 0, std::optional<int> end = std::nullopt) {
-    // Check for valid start and end indices
-    if (start < 0) {
-        start += in.size();
-    }
-
-    int actualEnd = (end == std::nullopt) ? in.size() : end.value();
-
-    if (actualEnd < 0) {
-        actualEnd += in.size();
-    }
-
-    if (actualEnd > in.size()) {
-        actualEnd = in.size();
-    }
+std::vector<typename Container::value_type> slice(const Container& in, size_t start = 0) {
+    size_t actualEnd = in.size();
 
     // Create a new list to store the sliced elements
     std::vector<typename Container::value_type> result;
@@ -415,7 +402,7 @@ OpKind getOperation(std::string_view op, const BabelType& left, const BabelType&
         if (isFloatCompatible)
             return OpKind::MulFloat;
 
-        if (left == BabelType::Boolean() ^ right == BabelType::Boolean())
+        if ((left == BabelType::Boolean()) != (right == BabelType::Boolean()) && (isBabelFloat(left) != isBabelFloat(right)))
             return OpKind::MulBool;
     } else if (op == "/") {
         if ((isBabelInteger(left) && isBabelInteger(right)) || isFloatCompatible)

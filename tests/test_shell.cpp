@@ -121,7 +121,7 @@ void runBabelWorker(const std::filesystem::path& absolutePath) {
     // Create a new builder for the module.
     Builder = std::make_unique<llvm::IRBuilder<>>(*TheContext);
 
-    unsigned long size = std::filesystem::file_size(absolutePath);
+    uintmax_t size = std::filesystem::file_size(absolutePath);
     std::string content(size, '\0');
     std::ifstream in(absolutePath);
     in.read(content.data(), size);

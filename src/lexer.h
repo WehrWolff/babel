@@ -35,7 +35,7 @@ public:
     bool operator==(const Token& that) const = default;
 };
 
-class Position {
+/* class Position {
     private:
         int line;
         int col;
@@ -67,29 +67,15 @@ class Position {
         int getInd () const {
             return ind;
         }
-};
+}; */
 
 class Lexer {
     private:
         std::string file_name;
-        std::string text;
-        
-        std::list<std::pair<std::string, std::string>> token_specs;
-
-        Position pos;
-        char current_char;
+        std::vector<std::pair<std::string, std::string>> token_specs;
 
     public:
-        Lexer (std::string file_name, std::list<std::pair<std::string, std::string>> token_specs) : file_name(file_name), token_specs(token_specs) {
-            //pos = Position(0, -1, -1, file_name, text);
-            current_char = (char) 0;
-            advance();
-        }
-
-        void advance () {
-            pos.advance(current_char);
-            current_char = pos.getInd() < text.size() ? text[pos.getInd()] : (char) 0;
-        }
+        Lexer (const std::string& file_name, const std::vector<std::pair<std::string, std::string>>& token_specs) : file_name(file_name), token_specs(token_specs) {}
 
         std::vector<Token> tokenize(std::string input_stream) const {
             std::vector<Token> tokens;

@@ -70,6 +70,9 @@ target_link_libraries(babel_tests PRIVATE ${Boost_LIBRARIES} ${LLVM_LIBRARIES})
 # we would prefer to use the #embed directive, but until its more widely adopted we use this
 target_compile_definitions(babel_tests PRIVATE PROJECT_ROOT_STRING="${CMAKE_CURRENT_LIST_DIR}")
 
+# ughhh, windows related double include shenanigans
+target_compile_definitions(babel_tests PRIVATE WIN32_LEAN_AND_MEAN)
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage -g")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage -g")

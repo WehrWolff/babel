@@ -194,7 +194,7 @@ int main(int argc, char* argv[]) {
     {
         std::filesystem::path source = std::filesystem::absolute(argv[1]);
 
-        unsigned long size = std::filesystem::file_size(source);
+        uintmax_t size = std::filesystem::file_size(source);
         std::string content(size, '\0');
         std::ifstream in(source);
         in.read(&content[0], size);

@@ -276,7 +276,7 @@ void Grammar::initializeFollows() {
                 follows[rule.nonterminal] = nonterminalFollows;
             }
 
-            for (int i = 0; i < rule.development.size(); i++) {
+            for (size_t i = 0; i < rule.development.size(); i++) {
                 std::string symbol = rule.development[i];
 
                 if (isElement(symbol, nonterminals)) {
@@ -318,11 +318,11 @@ std::vector<Rule> Grammar::getRulesForNonterminal(std::string_view nonterminal) 
 class UnifiedItem {
 public:
     Rule rule;
-    int dotIndex;
+    size_t dotIndex;
     mutable std::vector<std::string> lookAheads = {};
 
     UnifiedItem() = default;
-    UnifiedItem(const Rule& rule, int dotIndex) : rule(rule), dotIndex(dotIndex) {
+    UnifiedItem(const Rule& rule, size_t dotIndex) : rule(rule), dotIndex(dotIndex) {
         if (rule.index == 0) {
             lookAheads.emplace_back("$");
         }
@@ -456,7 +456,7 @@ public:
     explicit LRClosureTable(Grammar& grammar) : grammar(grammar) {
         kernels.emplace_back(Kernel(0, {UnifiedItem(grammar.rules.front(), 0)}));
 
-        for (int i = 0; i < kernels.size();) {
+        for (size_t i = 0; i < kernels.size();) {
             Kernel& kernel = kernels[i];
             updateClosure(kernel);
             
@@ -469,7 +469,7 @@ public:
     }
 
     void updateClosure(Kernel& kernel) const {
-        for (int i = 0; i < kernel.closure.size(); ++i) {
+        for (size_t i = 0; i < kernel.closure.size(); ++i) {
             auto it = std::next(kernel.closure.begin(), i);
             auto const& closure = *it;
             std::vector<UnifiedItem> newItemsFromSymbolAfterDot = closure.newItemsFromSymbolAfterDot();

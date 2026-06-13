@@ -704,7 +704,7 @@ llvm::Value *ArrayAST::codegen() {
     llvm::Value* ptr = Builder->CreateAlloca(type);
     llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0);
 
-    for (int i = 0; i < Val.size(); i++) {
+    for (size_t i = 0; i < Val.size(); i++) {
         llvm::Value* index = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), i);
         llvm::Value* slot = Builder->CreateGEP(type, ptr, {zero, index});
         StoreOrMemCpy(Val[i].get(), Val[i]->getType(), slot, Inner);
@@ -1128,7 +1128,7 @@ llvm::Value *UnaryOperatorAST::codegen() {
             return inc;
         }
         case PrePtrDec: {
-            llvm::Value* dec = Builder->CreateInBoundsGEP(resolveLLVMType(*ty.getPointer().to), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), -1)}, "ptrdec");
+            llvm::Value* dec = Builder->CreateInBoundsGEP(resolveLLVMType(*ty.getPointer().to), operand, {llvm::ConstantInt::getSigned(llvm::Type::getInt32Ty(*TheContext), -1)}, "ptrdec");
             Builder->CreateStore(dec, Val->requireLValue());
             return dec;
         }
@@ -1138,7 +1138,7 @@ llvm::Value *UnaryOperatorAST::codegen() {
             return operand;
         }
         case PostPtrDec: {
-            llvm::Value* dec = Builder->CreateInBoundsGEP(resolveLLVMType(*ty.getPointer().to), operand, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), -1)}, "ptrdec");
+            llvm::Value* dec = Builder->CreateInBoundsGEP(resolveLLVMType(*ty.getPointer().to), operand, {llvm::ConstantInt::getSigned(llvm::Type::getInt32Ty(*TheContext), -1)}, "ptrdec");
             Builder->CreateStore(dec, Val->requireLValue());
             return operand;
         }
@@ -1670,12 +1670,12 @@ llvm::Value *MacroCallAST::codegen() {
             babel_panic("@size_of requires one argument");
         
         BabelType ty = std::holds_alternative<BabelType>(Args[0]) ? std::get<BabelType>(Args[0]) : std::get<std::unique_ptr<BaseAST>>(Args[0])->getType();
-        std::string name = std::format("babel.size_of.{}", getBabelTypeName(ty));
+        std::string fname = std::format("babel.size_of.{}", getBabelTypeName(ty));
 
-        llvm::Function* F = TheModule->getFunction(name);
+        llvm::Function* F = TheModule->getFunction(fname);
         if (!F) {
             llvm::FunctionType *FT = llvm::FunctionType::get(Builder->getInt64Ty(), {}, false);
-            F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, name, TheModule.get());
+            F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, fname, TheModule.get());
     
             llvm::IRBuilder<>::InsertPoint PrevInsertPoint = Builder->saveIP();
     
@@ -1827,7 +1827,7 @@ llvm::Value *TaskCallAST::codegen() {
         babel_panic("vararg task needs at least %d arguments but got only %d", static_cast<int>(CalleF->arg_size()), static_cast<int>(Args.size()));
 
     std::vector<llvm::Value *> ArgsV;
-    for (unsigned int i = 0, e = Args.size(); i != e; ++i) {
+    for (size_t i = 0, e = Args.size(); i != e; ++i) {
         llvm::Value *val = Args[i]->codegen();
         if (CalleF->arg_size() < i && canImplicitCast(Args[i]->getType(), TaskTable.at(callsTo).args[i]))
             val = performImplicitCast(val, Args[i]->getType(), TaskTable.at(callsTo).args[i]);
