@@ -126,7 +126,7 @@ void runBabelWorker(const std::filesystem::path& absolutePath) {
     std::ifstream in(absolutePath);
     in.read(content.data(), size);
 
-    Lexer lexer = setupModuleAndLexer(absolutePath);
+    Lexer lexer = setupModuleAndLexer(absolutePath.string());
     run(lexer, *SharedContext::globalParser, content);
 
     std::error_code EC;
