@@ -520,7 +520,9 @@ void buildNode(std::stack<std::variant<TreeNode, std::unique_ptr<BaseAST>, Symbo
         std::string TaskName = std::get<TreeNode>(nodeStack.top()).data.value(); nodeStack.pop();
         nodeStack.pop(); nodeStack.pop(); // TASK and EXTERN
 
-        node = std::make_unique<TaskHeaderAST>(TaskName, std::deque<std::string>(ArgTypes.size(), "") , ArgTypes, retType, isVarArg);
+
+        auto ArgNames = std::deque<std::string>(ArgTypes.size(), "");
+        node = std::make_unique<TaskHeaderAST>(TaskName, std::move(ArgNames), std::move(ArgTypes), retType, isVarArg);
     } else if (type == "task_header") {
         BabelType retType = std::get<Symbol>(nodeStack.top()).obtainType(); nodeStack.pop();
         nodeStack.pop(); nodeStack.pop(); // RARR and RPAREN

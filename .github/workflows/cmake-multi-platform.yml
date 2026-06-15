@@ -45,7 +45,7 @@ jobs:
             compiler_version: 14
             libcxx: --settings=compiler.libcxx=libstdc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
-            cmd: sudo apt-get install lcov
+            cmd: sudo apt-get update && sudo apt-get install lcov
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
@@ -53,7 +53,7 @@ jobs:
             compiler_version: 19
             libcxx: --settings=compiler.libcxx=libstdc++
             conan_toolchain_path: build/build/Release/generators/conan_toolchain.cmake
-            cmd: sudo apt-get install llvm
+            cmd: sudo apt-get update && sudo apt-get install llvm
 
         exclude:
           - os: windows-latest
@@ -98,7 +98,7 @@ jobs:
       run: |
         [ $RUNNER_OS == "Linux" ] && export CC=${{ matrix.c_compiler }} CXX=${{ matrix.cpp_compiler }}
         conan profile detect --exist-ok
-        conan install . --output-folder=./build --build=missing --settings=compiler.cppstd=20 --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.version=${{ matrix.compiler_version }} ${{ matrix.libcxx }}
+        conan install . --output-folder=./build --build=missing --settings=build_type=${{ matrix.build_type }} --settings=compiler=${{ matrix.conan_compiler }} --settings=compiler.cppstd=20 --settings=compiler.version=${{ matrix.compiler_version }} ${{ matrix.libcxx }}
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.

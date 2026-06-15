@@ -480,7 +480,7 @@ class TaskHeaderAST : public BaseAST {
     bool isVarArg;
 
     public:
-        TaskHeaderAST(const std::string &Name, std::deque<std::string> _Args, std::deque<BabelType> ArgTypes, BabelType ReturnType, bool isVarArg) : Name(Name), Args(std::move(_Args)), ArgTypes(std::move(ArgTypes)), ReturnType(ReturnType), isVarArg(isVarArg) {
+        TaskHeaderAST(const std::string &Name, std::deque<std::string> _Args, std::deque<BabelType> _ArgTypes, BabelType ReturnType, bool isVarArg) : Name(Name), Args(std::move(_Args)), ArgTypes(std::move(_ArgTypes)), ReturnType(ReturnType), isVarArg(isVarArg) {
             TaskTable[Name] = {this->ArgTypes, ReturnType, isVarArg};
             PolymorphTable[Name] = PolymorphTable.contains(Name);
 
@@ -1829,7 +1829,7 @@ llvm::Value *TaskCallAST::codegen() {
     std::vector<llvm::Value *> ArgsV;
     for (size_t i = 0, e = Args.size(); i != e; ++i) {
         llvm::Value *val = Args[i]->codegen();
-        if (CalleF->arg_size() < i && canImplicitCast(Args[i]->getType(), TaskTable.at(callsTo).args[i]))
+        if (i < CalleF->arg_size() && canImplicitCast(Args[i]->getType(), TaskTable.at(callsTo).args[i]))
             val = performImplicitCast(val, Args[i]->getType(), TaskTable.at(callsTo).args[i]);
         
         ArgsV.push_back(val);

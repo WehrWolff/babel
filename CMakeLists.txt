@@ -71,7 +71,7 @@ target_link_libraries(babel_tests PRIVATE ${Boost_LIBRARIES} ${LLVM_LIBRARIES})
 target_compile_definitions(babel_tests PRIVATE PROJECT_ROOT_STRING="${CMAKE_CURRENT_LIST_DIR}")
 
 # ughhh, windows related double include shenanigans
-target_compile_definitions(babel_tests PRIVATE WIN32_LEAN_AND_MEAN)
+target_compile_definitions(babel_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage -g")
